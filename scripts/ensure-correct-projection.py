@@ -1,0 +1,1 @@
+﻿gdalwarp -of GTiff -r cubic -co PREDICTOR=2 -co zlevel=9 -t_srs EPSG:3857 input.tif output.tif

@@ -2,7 +2,7 @@
 #output can be found in root/arch_tif
 #make copy of get-tiffs-from-dc.py into root folder
 #be sure to change barcode before running
-#to run, enter 'sudo python3 get-tiffs-from-dc.py' into terminal
+#to run, enter 'sudo python3 get-all-from-barcode.py' into terminal
 #enter password for user
 #*** If running on windows:
 #			Run in OSGEO shell and without sudo

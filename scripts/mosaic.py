@@ -36,7 +36,7 @@ if not os.path.exists(mosaic_path):
 
 
 #defines location of footprint
-footprint_path = os.path.join(rootdir, "footprint", "Boundary.shp")
+footprint_path = os.path.join(rootdir, "footprint", "Boundary.geojson")
 
 
 

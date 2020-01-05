@@ -23,10 +23,10 @@ with open(os.path.join(rootdir, "plate-index.txt"),"w+") as txt_file:
         if f.endswith(".tif"):
             txt_file.write(f + "\n")
 input = os.path.join(rootdir, "plate-index.txt")
-output = os.path.join(index_path, "index.shp")
+output = os.path.join(index_path, "index.geoJSON")
 
 #create the command to create the tile index
-tile_index_command = ("gdaltindex", "-tileindex", "identifier", "-f", "ESRI Shapefile", output, "--optfile", input)
+tile_index_command = ("gdaltindex", "-tileindex", "identifier", "-f", "GeoJSON", output, "--optfile", input)
 #call the command to create tile index
 subprocess.call(tile_index_command)
 print('\n')

@@ -6,6 +6,8 @@ from shapely.geometry import shape, mapping
 from shapely.ops import unary_union
 import json
 
+
+
 # SETTINGS
 
 # URL for AirTable API
@@ -17,15 +19,16 @@ airtable_url = "https://api.airtable.com/v0/appfoecBxrOudOHVh/CLIR-Progress?api_
 input_airtable_src = requests.get(airtable_url)
 input_airtable_json = input_airtable_src.json()["records"]
 
+
 geojson_template = {"type": "FeatureCollection", "features": []}
+
 
 for layer in input_airtable_json:
 
-	if layer['fields']['status'][0] != "complete": continue
+	if layer['fields']['status']!= "complete": continue
 
 	geojson_url = "https://s3.us-east-2.wasabisys.com/urbanatlases/" + layer['fields']['barcode'] + "/src/footprint/Boundary.geojson"
 
-	print(geojson_url)
 	# make an HTTP request for that geojson file
 	remote_geojson = requests.get(geojson_url)
 

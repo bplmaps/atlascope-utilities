@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import subprocess
+import json
 
 
 
@@ -29,5 +30,17 @@ output = os.path.join(index_path, "index.geoJSON")
 tile_index_command = ("gdaltindex", "-tileindex", "identifier", "-f", "GeoJSON", output, "--optfile", input)
 #call the command to create tile index
 subprocess.call(tile_index_command)
+
+#Remove '.tif' extension from feature identifiers
+#Read in index
+with open('Index/index.geoJSON','r') as file:
+    index = json.load(file)
+#Remove extension
+for feature in index['features']:
+    feature['properties']['identifier'] = feature['properties']['identifier'][:-4]
+#Write changes to file
+with open('Index/index.geoJSON','w') as file:
+    json.dump(index, file)
+
 print('\n')
 print("Index created successfully.")

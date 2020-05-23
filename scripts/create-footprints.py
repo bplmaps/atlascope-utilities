@@ -17,15 +17,16 @@ airtable_url = "https://api.airtable.com/v0/appfoecBxrOudOHVh/CLIR-Progress?api_
 # i = 0
 
 input_airtable_src = requests.get(airtable_url)
-input_airtable_json = input_airtable_src.json()["records"]
+input_airtable_json = input_airtable_src.json()
 
 
 geojson_template = {"type": "FeatureCollection", "features": []}
 
 
-for layer in input_airtable_json:
 
-	if layer['fields']['status']!= "complete": continue
+def processLayer(layer):
+	if layer['fields']['status']!= "complete":
+		return
 
 	geojson_url = "https://s3.us-east-2.wasabisys.com/urbanatlases/" + layer['fields']['barcode'] + "/src/footprint/Boundary.geojson"
 
@@ -35,7 +36,7 @@ for layer in input_airtable_json:
 	# if we don't get a successful HTTP request, something went wrong
 	if remote_geojson.status_code != 200:
 		print("‼️ Something went wrong loading the GeoJSON")
-		continue
+		return
 	else:
 		print("Loaded GeoJSON for " + layer['fields']["barcode"])
 
@@ -62,5 +63,22 @@ for layer in input_airtable_json:
 		print("‼️ Did not create plate footprints; unable to find plate field in input file for " + layer['fields']["barcode"])
 
 
+
+
+for layer in input_airtable_json["records"]:
+	processLayer(layer)
+	
+
+if input_airtable_json["offset"] != "":
+	print("Going to the second page")
+	second_page_src = requests.get(airtable_url + '&offset=' + input_airtable_json["offset"])
+	second_page_json = second_page_src.json()["records"]
+
+	for layer in second_page_json:
+		processLayer(layer)
+
+
 with open("../atlas-footprints/volume-extents.geojson","w+") as outFile:
 	outFile.write(json.dumps(geojson_template))
+
+

@@ -59,7 +59,7 @@ for layer in input_airtable_json:
 		with open("../atlas-footprints/plates-" + layer['fields']["barcode"] + ".geojson", "w+") as plateOutFile:
 			plateOutFile.write(json.dumps(geojson_for_plates))
 	else:
-		print("‼️ Did not create plate footprints; unable to find plate field in input file")
+		print("‼️ Did not create plate footprints; unable to find plate field in input file for " + layer['fields']["barcode"])
 
 
 with open("../atlas-footprints/volume-extents.geojson","w+") as outFile:

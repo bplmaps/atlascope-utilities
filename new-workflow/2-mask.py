@@ -20,10 +20,10 @@ for r, d, f in os.walk('./spatial_imagery'):
 		cutlineLayer = 'Boundary',
 		cutlineWhere = "identifier='{}'".format(basename),
 		cropToCutline = True,
-		copyMetadata = False,
-		dstAlpha = False,
+		copyMetadata = True,
+		dstAlpha = True,
 		multithread = True,
-		dstNodata = -1
+		creationOptions = ['COMPRESS=LZW']
 		)
 
 

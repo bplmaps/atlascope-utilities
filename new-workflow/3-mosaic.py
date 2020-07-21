@@ -8,7 +8,8 @@ for r, d, f in os.walk('./masked'):
         resolution = 'highest',
         separate = False,
         outputSRS = "EPSG:4326",
-        allowProjectionDifference = False
+        allowProjectionDifference = False,
+        srcNodata = 0
     )
 
 

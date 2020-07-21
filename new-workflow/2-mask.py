@@ -20,9 +20,10 @@ for r, d, f in os.walk('./spatial_imagery'):
 		cutlineLayer = 'Boundary',
 		cutlineWhere = "identifier='{}'".format(basename),
 		cropToCutline = True,
-		copyMetadata = True,
-		dstAlpha = True,
-		multithread = True
+		copyMetadata = False,
+		dstAlpha = False,
+		multithread = True,
+		dstNodata = -1
 		)
 
 
@@ -35,7 +36,3 @@ for r, d, f in os.walk('./spatial_imagery'):
 		del ds
 
 		print('✅ Done')
-
-
-
-

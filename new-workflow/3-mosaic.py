@@ -14,3 +14,11 @@ for r, d, f in os.walk('./masked'):
 
 
     gdal.BuildVRT('mosaic.vrt', ['./masked/{}'.format(source) for source in f], options = vrtOptions)
+
+    warpOptions = gdal.WarpOptions(
+        srcSRS = "EPSG:4326",
+        dstSRS = "EPSG:3857",
+        creationOptions = ['COMPRESS=LZW']
+    )
+
+    gdal.Warp("mosaic.tif", "mosaic.vrt", options=warpOptions)

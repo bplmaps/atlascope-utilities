@@ -22,7 +22,10 @@ for r, d, f in os.walk('./spatial_imagery'):
 		cropToCutline = True,
 		copyMetadata = True,
 		dstAlpha = True,
+		resampleAlg = "cubic",
 		multithread = True,
+		srcSRS = "EPSG:4326",
+        dstSRS = "EPSG:3857",
 		creationOptions = ['COMPRESS=LZW']
 		)
 

@@ -3,6 +3,7 @@
 import os
 from os import path
 import gdal
+import gdalconst
 import argparse
 
 
@@ -82,6 +83,7 @@ def check():
 
 def maskTransform():
 
+
 	print('➡️  Beginning mask and transform step')
 
 	if not os.path.exists('./masked'):
@@ -111,6 +113,8 @@ def maskTransform():
 					cropToCutline = True,
 					copyMetadata = True,
 					dstAlpha = True,
+					# outputType = gdalconst.GDT_Int16,
+					# dstNodata = -1,
 					multithread = True,
 					srcSRS = "EPSG:4326",
 					dstSRS = "EPSG:3857",
@@ -120,19 +124,62 @@ def maskTransform():
 
 				gdal.Warp('./masked/{}-masked.tif'.format(basename),'./spatial_imagery/{}'.format(file), options = warpOptions)
 
-		print('🎉 Everything looks good to go')
+		print('🎉 Completed masking and transforming')
+
+
+def buildMosaic():
+
+	print('➡️  Beginning Mosaic')
+
+	warpOptions = gdal.WarpOptions(
+				format = 'GTiff',
+				copyMetadata = True,
+				srcAlpha = True,
+				dstAlpha = True,
+				multithread = True,
+				srcSRS = "EPSG:3857",
+				dstSRS = "EPSG:3857",
+				creationOptions = ['COMPRESS=LZW'],
+				resampleAlg = 'average'
+				)
+
+	for r, d, f in os.walk('./masked'):
+
+		iterator = 0
+
+		for file in f:
+
+			# skip non tif or tiff filenames
+			if file[-3:] not in ['tif','tiff']:
+				print('× Skipping non-TIFF file {}'.format(file))
+
+			else:
+				if iterator == 0:
+					firstFile = file
+				elif iterator == 1:
+					print('🖼 Mosaicing files {} and {}'.format(firstFile,file))
+					gdal.Warp('./mosaic/temp.tif',['./masked/{}'.format(firstFile),'./masked/{}'.format(file)], options = warpOptions)
+				else:
+					print('🖼 Mosaicing file {}'.format(file))
+					gdal.Warp('./mosaic/temp.tif',['./mosaic/temp.tif','./masked/{}'.format(file)], options = warpOptions)
+
+				iterator = iterator + 1
+		print('🎉 Congrats, you now have a giant mosaic')
 
 
 if __name__ == "__main__":
 	
-	if args.step == 'check' or args.step == 'all':
+	if args.step == 'check':
 
 		checkStep = check()
 
-	if args.step == 'mask-transform' or (args.step == 'all' and checkStep):
+	if args.step == 'mask-transform':
 
 		maskTransform()
-		
+
+	if args.step == 'mosaic':
+
+		buildMosaic()
 		
 
 

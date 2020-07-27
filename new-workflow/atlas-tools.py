@@ -177,8 +177,8 @@ def transformFromSource():
 				print('🤿  Creating masked mosaic TIFF in EPSG:3857 for {}'.format(file))
 				gdal.Warp('./masked/{}.tif'.format(basename),'./tmp/{}-translated.tif'.format(basename), options=warpOptions)
 
-				# print('🚮  Deleting temporary translate file for {}'.format(file))
-				# os.remove('./tmp/{}-translated.tif'.format(basename))
+				print('🚮  Deleting temporary translate file for {}'.format(file))
+				os.remove('./tmp/{}-translated.tif'.format(basename))
 
 	print('🎉 Completed creating mosaic pieces from archival imagery. You can go to the vrt-mosaic step.')
 

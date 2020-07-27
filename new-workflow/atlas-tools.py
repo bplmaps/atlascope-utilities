@@ -21,8 +21,9 @@ def check():
 
 	import osr
 	import fiona
+	from shapely.geometry import shape
 
-	print('➡️  Beginning check step')
+	print('➡️  Beginning check step!')
 
 	# we begin by looking into Boundary.geojson
 	try:
@@ -33,6 +34,16 @@ def check():
 			for feature in footprintFile:
 
 				identifier = feature['properties']['identifier']
+				print('👀 Checking identifier {}'.format(identifier))
+
+				# First check the geometry of this object itself to see if it's legit
+				geometry = shape(feature['geometry'])
+				if(geometry.is_valid):
+					print('\t✅ Footprint geometry for {} is valid'.format(identifier))
+				else:
+					print('\t⚠️ Footprint geometry for {} is invalid'.format(identifier))
+					errorCounter = errorCounter + 1
+
 
 				# little hacky way to tell insets to look for their parent file
 				if len(identifier.split('_')) > 2:
@@ -40,36 +51,34 @@ def check():
 				else:
 					sourceIdentifier = identifier
 
-				print('👀 Checking identifier {}'.format(identifier))
-
 				if path.isfile('./gcps/{}.tif.points'.format(identifier)):
-					print('✅ GCPS for {} exists'.format(identifier))
+					print('\t✅ GCPS for {} exists'.format(identifier))
 				else:
-					print('⚠️ Could not find GCPS for {}'.format(identifier))
+					print('\t⚠️ Could not find GCPS for {}'.format(identifier))
 					errorCounter = errorCounter + 1
 
 
 				if path.isfile('./archival_imagery/{}.tif'.format(sourceIdentifier)):
-					print('✅ Archival TIFF for {} exists'.format(identifier))
+					print('\t✅ Archival TIFF for {} exists'.format(identifier))
 
 					sourceTiff = gdal.Open('./archival_imagery/{}.tif'.format(sourceIdentifier))
 
 					# check if it opened successfully
 					if sourceTiff is None:
-						print('⚠️ Could not read file {}'.format(file))
+						print('\t⚠️ Could not read file {}'.format(file))
 						errorCounter = errorCount + 1
 					else:
-						print('✅ Archival TIFF for {} is readable'.format(identifier))
+						print('\t✅ Archival TIFF for {} is readable'.format(identifier))
 
 				# check if there are 3 bands
 						if sourceTiff.RasterCount != 3:	
-							print('⚠️ Incorrect number of bands in {}'.format(sourceIdentifier))
+							print('\t⚠️ Incorrect number of bands in {}'.format(sourceIdentifier))
 							errorCounter = errorCount + 1
 						else:
-							print('✅ Archival TIFF for {} has 3 bands'.format(identifier))
+							print('\t✅ Archival TIFF for {} has 3 bands'.format(identifier))
 
 				else:
-					print('⚠️ Cound not find archival TIFF for {}'.format(identifier))
+					print('\t⚠️ Cound not find archival TIFF for {}'.format(identifier))
 					errorCounter = errorCounter + 1
 
 			if errorCounter == 0:

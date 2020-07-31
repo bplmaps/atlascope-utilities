@@ -34,11 +34,7 @@ def check():
 
 				identifier = feature['properties']['identifier']
 
-				# little hacky way to tell insets to look for their parent file
-				if len(identifier.split('_')) > 2:
-					sourceIdentifier = '_'.join(identifier.split('_')[:2])
-				else:
-					sourceIdentifier = identifier
+				sourceIdentifier = parseInset(identifier)
 
 				print('👀 Checking identifier {}'.format(identifier))
 
@@ -109,7 +105,7 @@ def transformFromSource():
 
 			else:
 
-				basename = file.split('.')[0]
+				basename = file.split('.')[0] # this is equivalent to identifier
 				gcps = []
 
 				with open('./gcps/{}'.format(file),'r') as gcpsFile:
@@ -132,12 +128,9 @@ def transformFromSource():
 
 				print('🧮  Creating temporary translate file for {}'.format(basename))
 
-				if len(basename.split('_')) > 2:
-					sourcefile = '_'.join(basename.split('_')[:2])
-				else:
-					sourcefile = basename
+				sourceIdentifier = parseInset(basename)
 
-				archivalImage = gdal.Open('./archival_imagery/{}.tif'.format(sourcefile))
+				archivalImage = gdal.Open('./archival_imagery/{}.tif'.format(sourceIdentifier))
 
 				for b in [1,2,3]:
 					band = archivalImage.GetRasterBand(b)
@@ -201,6 +194,12 @@ def buildVRT():
 
 		print('🎉 Completed creating the VRT. You can now feed this directly to gdal2tiles!')
 
+
+def parseInset(identifier):
+	if len(identifier.split('_inset')) > 1:
+		return identifier.split('_inset')[0]
+	else:
+		return identifier
 
 
 if __name__ == "__main__":

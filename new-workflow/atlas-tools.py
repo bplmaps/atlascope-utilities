@@ -25,9 +25,9 @@ def check():
 
 	print('➡️  Beginning check step!')
 
-	# we begin by looking into Boundary.geojson
+	# we begin by looking into footprint.geojson
 	try:
-		with fiona.open('./footprint/Boundary.geojson') as footprintFile:
+		with fiona.open('./footprint/footprint.geojson') as footprintFile:
 
 			errorCounter = 0
 
@@ -113,20 +113,21 @@ def transformFromSource():
 				print('× Skipping non-GCPS file {}'.format(file))
 
 			else:
-
+				
 				basename = file.split('.')[0] # this is equivalent to identifier
 				gcps = []
 
 				with open('./gcps/{}'.format(file),'r') as gcpsFile:
-
+					next(gcpsFile)
 					print('⛰  Using ground control points {}'.format(basename))
 
 					reader = csv.DictReader(gcpsFile)
+					
 					for row in reader:
 
 						xt, yt = transformer.transform(row['mapY'],row['mapX'])
 
-						g = gdal.GCP(xt, yt, 0, float(row['pixelX']), -float(row['pixelY']))
+						g = gdal.GCP(xt, yt, 0, float(row['sourceX']), -float(row['sourceY']))
 						gcps.append(g)
 
 				translateOptions = gdal.TranslateOptions(
@@ -153,8 +154,8 @@ def transformFromSource():
 							format = 'GTiff',
 							copyMetadata = True,
 							multithread = True,
-							cutlineDSName = './footprint/Boundary.geojson',
-							cutlineLayer = 'Boundary',
+							cutlineDSName = './footprint/footprint.geojson',
+							cutlineLayer = 'footprint',
 							cutlineWhere = "identifier='{}'".format(basename),
 							cropToCutline = True,
 							dstSRS = "EPSG:3857",

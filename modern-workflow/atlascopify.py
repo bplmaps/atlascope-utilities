@@ -19,40 +19,6 @@ args = parser.parse_args()
 
 def downloadInputs(identifier):
 
-# here we download the TIFFs from Digital Commonwealth
-
-    digitalCommonwealthManifestRequest = requests.get(f'https://collections.leventhalmap.org/search/{identifier}/manifest')
-    manifestJSON = digitalCommonwealthManifestRequest.json()
-
-    counter = 0
-
-    # use digital commonwealth API to get all map images associated with a manifest/commonwealth ID
-
-    for sequence in manifestJSON['sequences']:
-        for canvas in sequence['canvases']:
-            for image in canvas['images']:
-                if counter > 4:
-                    break
-                else:
-                    imageURL = image['resource']['service']['@id']
-                    tiffURL = f'{imageURL}/full/full/0/default.tif'
-
-                    print(f'⤵️ Downloading image {tiffURL}')
-
-                    #  download the image for each atlas plate
-
-                    imageRequest = requests.get(tiffURL, stream=True)
-
-                    # right now we're naming them with a ordinal counter, fix this later
-
-                    with open(f'./tmp/img/{counter}.tif', 'wb') as fd:
-                        for chunk in imageRequest.iter_content(chunk_size=128):
-                            fd.write(chunk)
-
-                    counter = counter+1
-
-    print("✅ All images downloaded!")
-# here we download the allmaps georeference annotations for each plate inside an atlas
 
     # ask allmaps API what the Allmaps ID is for the Commonwealth Manifest ID we sent over
 
@@ -61,7 +27,12 @@ def downloadInputs(identifier):
     
     counter = 0
 
+    # create an empty list to hold the images we're going to later download
+    imagesList = []
+
     # use the Allmaps API to get all the Map IDs from that Manifest
+
+
 
     for item in allmapsManifest['items']:
         if counter > 4:
@@ -75,12 +46,32 @@ def downloadInputs(identifier):
         annoRequest = requests.get(mapURL, stream=True)
         allmapsAnnotation = annoRequest.json()
 
+        # write out all the images we're later going to need to download into an array. 
+        # rewrite the jpg suffix to tif
+        for item in allmapsAnnotation["items"]:
+            imagesList.append( item["target"]["source"].replace(".jpg", ".tif") )
+
+
         with open(f'./tmp/annotations/{counter}.json', 'w') as f:
             json.dump(allmapsAnnotation, f)
 
         counter = counter+1
     
     print("✅ All annotations downloaded!")
+
+
+    # now walk through all the images that were mentioned in annotations
+
+    for image in imagesList:
+
+        print(f'⤵️ Downloading image {image}')
+
+        imageRequest = requests.get(image, stream=True)
+
+        with open(f'./tmp/img/{ image.split("commonwealth:")[1][0:9] }.tif', 'wb') as fd:
+            for chunk in imageRequest.iter_content(chunk_size=128):
+                fd.write(chunk)
+
 
 def createDirectoryStructure():
     if not os.path.exists('./tmp'):

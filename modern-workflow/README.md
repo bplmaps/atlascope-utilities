@@ -1,8 +1,10 @@
 # Geotransforming urban atlases using Allmaps and GDAL
 
-the python script in this repo will do:
+the python script in this repo will eventually do 1-5:
 
 ![atlascopify](./media/atlascopify.png)
+
+right now it just does 1
 
 ## Usage
 

@@ -72,6 +72,12 @@ def downloadInputs(identifier):
             for chunk in imageRequest.iter_content(chunk_size=128):
                 fd.write(chunk)
 
+def allmapsTransform():
+    # 1. traverse annotations directory
+    # 2. execute allmaps `allmaps transform pixel-mask <json>` command on every file it finds
+    # see subprocess library in python
+    # output should nominally match input
+    return
 
 def createDirectoryStructure():
     if not os.path.exists('./tmp'):
@@ -102,6 +108,9 @@ if __name__ == "__main__":
     
         if args.step == 'download-inputs':
             downloadInputs(args.identifier)
+
+        elif args.step == 'allmaps-transform':
+            allmapsTransform()
 
         else:
             print("We haven't made this step do anything yet")

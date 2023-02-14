@@ -3,9 +3,12 @@
 import argparse
 import requests
 import os
+import re
 import json
 import subprocess
-from subprocess import Popen, PIPE
+from osgeo import gdal
+from pyproj import Transformer
+import numpy as np
 from os import path
 
 
@@ -87,7 +90,8 @@ def downloadInputs(identifier):
 def allmapsTransform():
     
     if not os.path.exists('./tmp/annotations/transformed'):
-        os.mkdir('./tmp/annotations/transformed')    
+        os.mkdir('./tmp/annotations/transformed') 
+
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
     
@@ -116,7 +120,74 @@ def allmapsTransform():
     return
 
 def mosaicPlates():
-    return
+
+    print(f'🏔 Registering GCPs from annotation')
+
+    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    gcps = []
+    path="./tmp/annotations/"
+
+    for file in os.listdir(path):
+        isFile = os.path.isfile(path+file)
+        if not file.startswith('.') and isFile == True:
+
+            anno = open(path+file)
+
+            annoJson = json.load(anno)
+            commonwealthUrl = annoJson['items'][0]['target']['source']
+            commId = (commonwealthUrl[57:-24])
+            print(commId)
+
+            for gcp in annoJson['items'][0]['body']['features']:
+                xt, yt = transformer.transform(
+                    gcp['geometry']['coordinates'][0], gcp['geometry']['coordinates'][1])
+                line = float(gcp['properties']['pixelCoords'][1])
+                pixel = float(gcp['properties']['pixelCoords'][0])
+                g = gdal.GCP(xt, yt, 0, pixel, line)
+                gcps.append(g)
+
+            sourceImg = gdal.Open(f'./tmp/img/{commId}.tif')
+
+            # # for b in [1, 2, 3]:
+            # # 	band = archivalImage.GetRasterBand(b)
+            # # 	readableBand = band.ReadAsArray()
+            # # 	readableBand[np.where(readableBand == 0)] = 1
+
+            translateOptions = gdal.TranslateOptions(
+                format='GTiff',
+                GCPs=gcps,
+                outputSRS='EPSG:3857'
+            )
+            
+            mapId = os.path.splitext(file)[0]
+            
+            gdal.Translate(
+                f'./tmp/img/{mapId}-translated.tif',
+                sourceImg,
+                options = translateOptions
+            )
+
+            warpOptions = gdal.WarpOptions(
+                                    format='GTiff',
+                                    copyMetadata=True,
+                                    multithread=True,
+                                    dstSRS="EPSG:3857",
+                                    creationOptions=['COMPRESS=LZW', 'BIGTIFF=YES'],
+                                    resampleAlg='cubic',
+                                    dstAlpha=False,
+                                    dstNodata=0,
+                                    xRes=1,
+                                    yRes=1,
+                                    targetAlignedPixels=True
+                                    )
+
+            print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')
+
+            gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
+                        f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
+
+            print(f'🚮 Deleting temporary translate file for {mapId}.json')
+            os.remove(f'./tmp/img/{mapId}-translated.tif')
 
 def createDirectoryStructure():
     if not os.path.exists('./tmp'):

@@ -4,6 +4,8 @@ import argparse
 import requests
 import os
 import json
+import subprocess
+from subprocess import Popen, PIPE
 from os import path
 
 
@@ -15,10 +17,11 @@ parser.add_argument('--identifier', type=str,
 
 args = parser.parse_args()
 
-# 
+# we run the `downloadInputs` function
+# to pull all of the necessary georeference annotations
+# and TIFF images onto our local machine
 
 def downloadInputs(identifier):
-
 
     # ask allmaps API what the Allmaps ID is for the Commonwealth Manifest ID we sent over
 
@@ -32,11 +35,9 @@ def downloadInputs(identifier):
 
     # use the Allmaps API to get all the Map IDs from that Manifest
 
-
-
     for item in allmapsManifest['items']:
-        if counter > 4:
-            break
+        # if counter > 4:
+        #     break
         allmapsMapID = item['id']
         mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
         print(f'⤵️ Downloading annotation {mapURL}')
@@ -46,19 +47,21 @@ def downloadInputs(identifier):
         annoRequest = requests.get(mapURL, stream=True)
         allmapsAnnotation = annoRequest.json()
 
-        # write out all the images we're later going to need to download into an array. 
-        # rewrite the jpg suffix to tif
+        # write out all the images we're later going to need to download into an array,
+        # but skip if image already appears in array
+        # so we don't download multiple times later on.
+        # then rewrite the jpg suffix to tif
+
         for item in allmapsAnnotation["items"]:
-            imagesList.append( item["target"]["source"].replace(".jpg", ".tif") )
+            if item["target"]["source"].replace(".jpg", ".tif") not in imagesList:
+                imagesList.append( item["target"]["source"].replace(".jpg", ".tif") )
 
-
-        with open(f'./tmp/annotations/{counter}.json', 'w') as f:
+        with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
             json.dump(allmapsAnnotation, f)
 
         counter = counter+1
     
     print("✅ All annotations downloaded!")
-
 
     # now walk through all the images that were mentioned in annotations
 
@@ -72,11 +75,47 @@ def downloadInputs(identifier):
             for chunk in imageRequest.iter_content(chunk_size=128):
                 fd.write(chunk)
 
+    print("✅ All images downloaded!")
+    print(" ")
+    print("You can now proceed to the `allmaps-transform` step.")
+    print(" ")
+
+# we run the `allmapsTransform` function
+# to transform the Allmaps pixel mask
+# into a .geojson
+
 def allmapsTransform():
-    # 1. traverse annotations directory
-    # 2. execute allmaps `allmaps transform pixel-mask <json>` command on every file it finds
-    # see subprocess library in python
-    # output should nominally match input
+    
+    if not os.path.exists('./tmp/annotations/transformed'):
+        os.mkdir('./tmp/annotations/transformed')    
+    path = "./tmp/annotations/"
+    outPath = path+"transformed/"
+    
+    for f in os.listdir(path):
+        isFile = os.path.isfile(path+f)
+        if not f.startswith('.') and isFile == True:
+            print(f'⤵️ Transforming {f} into a geojson...')
+            name = os.path.splitext(f)[0]+'-transformed.geojson'
+            file = open(outPath+name, "w")
+            
+            cmd = [
+                "allmaps", "transform", "pixel-mask", f
+            ]
+
+            subprocess.run(
+                cmd,
+                cwd=path,
+                stdout=file
+            )
+    
+    print("✅ All pixel masks transformed!")
+    print(" ")
+    print("You can now proceed to the `mosaic-plates` step.")
+    print(" ")
+
+    return
+
+def mosaicPlates():
     return
 
 def createDirectoryStructure():
@@ -103,7 +142,11 @@ if __name__ == "__main__":
         exit()
 
     else:
-        # no matter what step we're running, first run the directory structure function to ensure that the right subdirectories exist
+        
+        # no matter what step we're running
+        # first run the directory structure function
+        # to ensure that the right subdirectories exist
+
         createDirectoryStructure()
     
         if args.step == 'download-inputs':
@@ -111,6 +154,9 @@ if __name__ == "__main__":
 
         elif args.step == 'allmaps-transform':
             allmapsTransform()
+        
+        elif args.step == 'mosaic-plates':
+            mosaicPlates()
 
         else:
             print("We haven't made this step do anything yet")

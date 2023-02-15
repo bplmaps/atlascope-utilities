@@ -3,7 +3,6 @@
 import argparse
 import requests
 import os
-import re
 import json
 import subprocess
 from osgeo import gdal
@@ -100,7 +99,7 @@ def allmapsTransform():
         if not f.startswith('.') and isFile == True:
             print(f'⤵️ Transforming {f} into a geojson...')
             name = os.path.splitext(f)[0]+'-transformed.geojson'
-            file = open(outPath+name, "w")
+            footprint = open(outPath+name, "w")
             
             cmd = [
                 "allmaps", "transform", "pixel-mask", f
@@ -109,7 +108,7 @@ def allmapsTransform():
             subprocess.run(
                 cmd,
                 cwd=path,
-                stdout=file
+                stdout=footprint
             )
     
     print("✅ All pixel masks transformed!")
@@ -124,7 +123,7 @@ def mosaicPlates():
     print(f'🏔 Registering GCPs from annotation')
 
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
-    gcps = []
+    
     path="./tmp/annotations/"
 
     for file in os.listdir(path):
@@ -136,15 +135,15 @@ def mosaicPlates():
             annoJson = json.load(anno)
             commonwealthUrl = annoJson['items'][0]['target']['source']
             commId = (commonwealthUrl[57:-24])
-            print(commId)
-
+            
+            gcps = []
             for gcp in annoJson['items'][0]['body']['features']:
-                xt, yt = transformer.transform(
-                    gcp['geometry']['coordinates'][0], gcp['geometry']['coordinates'][1])
-                line = float(gcp['properties']['pixelCoords'][1])
-                pixel = float(gcp['properties']['pixelCoords'][0])
-                g = gdal.GCP(xt, yt, 0, pixel, line)
-                gcps.append(g)
+                    xt, yt = transformer.transform(
+                        gcp['geometry']['coordinates'][0], gcp['geometry']['coordinates'][1])
+                    line = float(gcp['properties']['pixelCoords'][1])
+                    pixel = float(gcp['properties']['pixelCoords'][0])
+                    g = gdal.GCP(xt, yt, 0, pixel, line)
+                    gcps.append(g)
 
             sourceImg = gdal.Open(f'./tmp/img/{commId}.tif')
 
@@ -166,7 +165,9 @@ def mosaicPlates():
                 sourceImg,
                 options = translateOptions
             )
-
+            
+            cutline = f'./tmp/annotations/transformed/{mapId}-transformed.geojson'
+            
             warpOptions = gdal.WarpOptions(
                                     format='GTiff',
                                     copyMetadata=True,
@@ -174,11 +175,13 @@ def mosaicPlates():
                                     dstSRS="EPSG:3857",
                                     creationOptions=['COMPRESS=LZW', 'BIGTIFF=YES'],
                                     resampleAlg='cubic',
-                                    dstAlpha=False,
+                                    dstAlpha=True,
                                     dstNodata=0,
                                     xRes=1,
                                     yRes=1,
-                                    targetAlignedPixels=True
+                                    targetAlignedPixels=True,
+                                    cutlineDSName=cutline,
+                                    cropToCutline=True
                                     )
 
             print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')

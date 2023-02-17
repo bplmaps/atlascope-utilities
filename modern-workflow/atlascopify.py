@@ -52,9 +52,9 @@ def downloadInputs(identifier):
         annoRequest = requests.get(mapURL, stream=True)
         allmapsAnnotation = annoRequest.json()
 
-        # write out all the images we're later going to need to download into an array,
+        # write all the images we're later going to need to download into an array,
         # but skip if image already appears in array
-        # so we don't download multiple times later on.
+        # so we don't download multiple times.
         # then rewrite the jpg suffix to tif
 
         for item in allmapsAnnotation["items"]:
@@ -71,14 +71,18 @@ def downloadInputs(identifier):
     # now walk through all the images that were mentioned in annotations
 
     for image in imagesList:
+        imgFile = f'./tmp/img/{image.split("commonwealth:")[1][0:9] }.tif'
+        isFile = os.path.isfile(imgFile)
+        if isFile == True:
+            print(f'⏭️ Skipping {imgFile}, already exists...')
+        else:
+            print(f'⤵️ Downloading image {image}')
 
-        print(f'⤵️ Downloading image {image}')
+            imageRequest = requests.get(image, stream=True)
 
-        imageRequest = requests.get(image, stream=True)
-
-        with open(f'./tmp/img/{ image.split("commonwealth:")[1][0:9] }.tif', 'wb') as fd:
-            for chunk in imageRequest.iter_content(chunk_size=128):
-                fd.write(chunk)
+            with open(imgFile, 'wb') as fd:
+                for chunk in imageRequest.iter_content(chunk_size=128):
+                    fd.write(chunk)
 
     print("✅ All images downloaded!")
     print(" ")

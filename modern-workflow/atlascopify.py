@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import fiona
 import requests
 import os
 import json
 import subprocess
 from osgeo import gdal
+import geopandas as gpd
 from pyproj import Transformer
 import numpy as np
 from os import path
@@ -35,11 +37,12 @@ def downloadInputs(identifier):
     # create an empty list to hold the images we're going to later download
     imagesList = []
 
-    # use the Allmaps API to get all the Map IDs from that Manifest
+    # use the Allmaps API to
+    # iterate through images in a 
+    # get all the Map IDs
 
     for item in allmapsManifest['items']:
-        # if counter > 4:
-        #     break
+
         allmapsMapID = item['id']
         mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
         print(f'⤵️ Downloading annotation {mapURL}')
@@ -110,15 +113,21 @@ def allmapsTransform():
                 cwd=path,
                 stdout=footprint
             )
+
+            # close geojsons using geopandas
+
+            schema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
+            gdf = gpd.read_file(outPath+name)
+            gdf.to_file(outPath+name, driver="GeoJSON", schema=schema)
     
     print("✅ All pixel masks transformed!")
     print(" ")
-    print("You can now proceed to the `mosaic-plates` step.")
+    print("You can now proceed to the `warp-plates` step.")
     print(" ")
 
     return
 
-def mosaicPlates():
+def warpPlates():
 
     print(f'🏔 Registering GCPs from annotation')
 
@@ -192,6 +201,36 @@ def mosaicPlates():
             print(f'🚮 Deleting temporary translate file for {mapId}.json')
             os.remove(f'./tmp/img/{mapId}-translated.tif')
 
+    print("✅ All maps have been warped and mosaiqued!")
+    print(" ")
+    print("You can now run `gdal2tiles` to finish generating an XYZ tile layer.")
+    print(" ")
+
+def mosaicPlates():
+
+    warpedPlates = []
+    path = "./tmp/warped/"
+
+    for f in os.listdir(path):
+        isFile = os.path.isfile(path+f)
+        if not f.startswith('.') and isFile == True and f.endswith('.tif'):
+            warpedPlates.append(path+f)
+
+    print('➡️  Beginning to create VRT')
+
+    vrtOptions = gdal.BuildVRTOptions(
+        resolution = 'highest',
+        outputSRS = 'EPSG:3857',
+        separate = False,
+        srcNodata = 0
+        )
+
+    gdal.BuildVRT('./mosaic.vrt', warpedPlates, options=vrtOptions)
+
+    print('🎉 Completed creating the VRT. You can now feed this directly to gdal2tiles!')
+
+    return
+
 def createDirectoryStructure():
     if not os.path.exists('./tmp'):
         os.mkdir('./tmp')
@@ -212,7 +251,11 @@ def createDirectoryStructure():
 if __name__ == "__main__":
 
     if args.step == '':
-        print("😩 You didn't pass any function to the --step flag")
+        print("😩 You didn't pass any function to the --step flag, ya ninny! Try:")
+        print("\tatlascopify.py --step download-inputs")
+        print("\tatlascopify.py --step allmaps-transform")
+        print("\tatlascopify.py --step warp-plates")
+        print("\tatlascopify.py --step mosaic-plates")
         exit()
 
     else:
@@ -228,6 +271,9 @@ if __name__ == "__main__":
 
         elif args.step == 'allmaps-transform':
             allmapsTransform()
+        
+        elif args.step == 'warp-plates':
+            warpPlates()
         
         elif args.step == 'mosaic-plates':
             mosaicPlates()

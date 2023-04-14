@@ -29,10 +29,9 @@ def downloadInputs(identifier):
 
     # ask allmaps API what the Allmaps ID is for the Commonwealth Manifest ID we sent over
 
-    allmapsAPIRequest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json')
+    allmapsAPIRequest = requests.get(f'https://annotations.allmaps.org/?url={identifier}/manifest.json')
     allmapsManifest = allmapsAPIRequest.json()
-    
-    counter = 0
+
 
     # create an empty list to hold the images we're going to later download
     imagesList = []
@@ -52,9 +51,9 @@ def downloadInputs(identifier):
         annoRequest = requests.get(mapURL, stream=True)
         allmapsAnnotation = annoRequest.json()
 
-        # write all the images we're later going to need to download into an array,
+        # write out all the images we're later going to need to download into an array,
         # but skip if image already appears in array
-        # so we don't download multiple times.
+        # so we don't download multiple times later on.
         # then rewrite the jpg suffix to tif
 
         for item in allmapsAnnotation["items"]:
@@ -63,8 +62,6 @@ def downloadInputs(identifier):
 
         with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
             json.dump(allmapsAnnotation, f)
-
-        counter = counter+1
     
     print("✅ All annotations downloaded!")
 
@@ -72,9 +69,11 @@ def downloadInputs(identifier):
 
     for image in imagesList:
 
-        imgFile = f'./tmp/img/{image.split("commonwealth:")[1][0:9] }.tif'
+        # print(imagesList)
+        img = f'{image.split("service:")[1][0:53] }.tif'
+        imgFile = './tmp/img/'+img
         isFile = os.path.isfile(imgFile)
-        print(image)
+        retrieveImage = "https://tile.loc.gov/storage-services/master/" + img.replace(":", "/")
 
         # check if image file already exists
         # if so, skip; otherwise, download
@@ -84,11 +83,13 @@ def downloadInputs(identifier):
         else:
             print(f'⤵️ Downloading image {image}')
 
-            imageRequest = requests.get(image, stream=True)
+            imageRequest = requests.get(retrieveImage, stream=True)
 
             with open(imgFile, 'wb') as fd:
                 for chunk in imageRequest.iter_content(chunk_size=128):
                     fd.write(chunk)
+
+                    
 
     print("✅ All images downloaded!")
     print(" ")
@@ -112,7 +113,8 @@ def allmapsTransform():
         if not f.startswith('.') and isFile == True:
             print(f'⤵️ Transforming {f} into a geojson...')
             name = os.path.splitext(f)[0]+'-transformed.geojson'
-            footprint = open(outPath+name, "w")
+            geojsonFile = outPath+name
+            footprint = open(geojsonFile, "w")
             
             cmd = [
                 "allmaps", "transform", "pixel-mask", f
@@ -127,9 +129,16 @@ def allmapsTransform():
             # close geojsons using geopandas
 
             schema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
-            gdf = gpd.read_file(outPath+name)
-            gdf.to_file(outPath+name, driver="GeoJSON", schema=schema)
-    
+            gdf = gpd.read_file(geojsonFile)
+            gdf.to_file(geojsonFile, driver="GeoJSON", schema=schema)
+
+            # zero buffer because still getting cutline error...
+
+            gdf.geometry = gdf['geometry'].buffer(0)
+            gdf.head()
+
+            gdf.to_file(geojsonFile, driver="GeoJSON", schema=schema)
+
     print("✅ All pixel masks transformed!")
     print(" ")
     print("You can now proceed to the `warp-plates` step.")
@@ -152,8 +161,8 @@ def warpPlates():
             anno = open(path+file)
 
             annoJson = json.load(anno)
-            commonwealthUrl = annoJson['items'][0]['target']['source']
-            commId = (commonwealthUrl[57:-24])
+            mapsUrl = annoJson['items'][0]['target']['source']
+            locID = (mapsUrl[49:-24])
             
             gcps = []
             for gcp in annoJson['items'][0]['body']['features']:
@@ -164,12 +173,12 @@ def warpPlates():
                     g = gdal.GCP(xt, yt, 0, pixel, line)
                     gcps.append(g)
 
-            sourceImg = gdal.Open(f'./tmp/img/{commId}.tif')
+            sourceImg = gdal.Open(f'./tmp/img/{locID}.tif')
 
-            # # for b in [1, 2, 3]:
-            # # 	band = archivalImage.GetRasterBand(b)
-            # # 	readableBand = band.ReadAsArray()
-            # # 	readableBand[np.where(readableBand == 0)] = 1
+            # for b in [1, 2, 3]:
+            # 	band = archivalImage.GetRasterBand(b)
+            # 	readableBand = band.ReadAsArray()
+            # 	readableBand[np.where(readableBand == 0)] = 1
 
             translateOptions = gdal.TranslateOptions(
                 format='GTiff',
@@ -205,23 +214,14 @@ def warpPlates():
 
             print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')
 
-            warpedPlate = f'./tmp/warped/{mapId}-warped.tif'
-            isFile = os.path.isfile(warpedPlate)
+            gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
+                        f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
 
-            # check if image file already exists
-            # if so, skip; otherwise, download
-            
-            if isFile == True:
-                print(f'⏭️ Skipping {warpedPlate}, already exists...')
-            else:
+            print(f'🚮 Deleting temporary translate file for {mapId}.json')
+            os.remove(f'./tmp/img/{mapId}-translated.tif')
 
-                gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
-                            f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
-
-                print(f'🚮 Deleting temporary translate file for {mapId}.json')
-                os.remove(f'./tmp/img/{mapId}-translated.tif')
-
-    print("✅ All maps have been warped!")
+    print(" ")
+    print("✅ All images have been warped!")
     print(" ")
     print("You can now proceed to the final step, `mosaic-plates`.")
     print(" ")

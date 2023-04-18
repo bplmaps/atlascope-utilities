@@ -292,13 +292,9 @@ if __name__ == "__main__":
             try:
                 downloadInputs(args.identifier)
             except KeyError:
-                print("________________________________")
-                print(" ")
                 print("🚩 This collection of the manifest you entered contains no georeference annotations.")
-                print(f"Check https://editor.allmaps.org/#/collection?url=https://www.digitalcommonwealth.org/search/{args.identifier}/manifest to confirm that it contains georeferenced maps.")
-                print("________________________________")
-                print(" ")
-                print("Full Error Below:")
+                print(f"Begin georeferencing it at: https://editor.allmaps.org/#/collection?url=https://www.digitalcommonwealth.org/search/{args.identifier}/manifest")
+                print("Read the full error below:")
                 print(" ")
                 print(traceback.format_exc())
 

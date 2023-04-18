@@ -217,8 +217,8 @@ def warpPlates():
             gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
                         f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
 
-            print(f'🚮 Deleting temporary translate file for {mapId}.json')
-            os.remove(f'./tmp/img/{mapId}-translated.tif')
+            # print(f'🚮 Deleting temporary translate file for {mapId}.json')
+            # os.remove(f'./tmp/img/{mapId}-translated.tif')
 
     print(" ")
     print("✅ All images have been warped!")

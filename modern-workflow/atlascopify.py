@@ -11,6 +11,8 @@ import geopandas as gpd
 from pyproj import Transformer
 import numpy as np
 from os import path
+import traceback
+import sys
 
 
 parser = argparse.ArgumentParser(description='Tools to help in the process of geotransforming urban atlases.')
@@ -287,7 +289,18 @@ if __name__ == "__main__":
         createDirectoryStructure()
     
         if args.step == 'download-inputs':
-            downloadInputs(args.identifier)
+            try:
+                downloadInputs(args.identifier)
+            except KeyError:
+                print("________________________________")
+                print(" ")
+                print("🚩 This collection of the manifest you entered contains no georeference annotations.")
+                print(f"Check https://editor.allmaps.org/#/collection?url=https://www.digitalcommonwealth.org/search/{args.identifier}/manifest to confirm that it contains georeferenced maps.")
+                print("________________________________")
+                print(" ")
+                print("Full Error Below:")
+                print(" ")
+                print(traceback.format_exc())
 
         elif args.step == 'allmaps-transform':
             allmapsTransform()

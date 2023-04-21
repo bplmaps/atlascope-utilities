@@ -126,11 +126,11 @@ def allmapsTransform():
                 stdout=footprint
             )
 
-            # close geojsons using geopandas
+            # # close geojsons using geopandas
 
-            schema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
-            gdf = gpd.read_file(outPath+name)
-            gdf.to_file(outPath+name, driver="GeoJSON", schema=schema)
+            # schema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
+            # gdf = gpd.read_file(outPath+name)
+            # gdf.to_file(outPath+name, driver="GeoJSON", schema=schema)
     
     print("✅ All pixel masks transformed!")
     print(" ")
@@ -195,6 +195,7 @@ def warpPlates():
                                     multithread=True,
                                     dstSRS="EPSG:3857",
                                     creationOptions=['COMPRESS=LZW', 'BIGTIFF=YES'],
+                                    polynomialOrder=1,
                                     resampleAlg='cubic',
                                     dstAlpha=True,
                                     dstNodata=0,
@@ -210,8 +211,8 @@ def warpPlates():
             warpedPlate = f'./tmp/warped/{mapId}-warped.tif'
             isFile = os.path.isfile(warpedPlate)
 
-            # check if image file already exists
-            # if so, skip; otherwise, download
+            # check if warped map already exists
+            # if so, skip; otherwise, warp
             
             if isFile == True:
                 print(f'⏭️ Skipping {warpedPlate}, already exists...')

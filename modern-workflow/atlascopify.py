@@ -13,10 +13,10 @@ import numpy as np
 from os import path
 import traceback
 import sys
-
+import glob
 
 parser = argparse.ArgumentParser(description='Tools to help in the process of geotransforming urban atlases.')
-parser.add_argument('--step', metavar='{download-inputs, create-footprint, warp-plates}', type=str, 
+parser.add_argument('--step', metavar='{download-inputs, create-footprint, warp-plates, mosaic-plates, create-xyz}', type=str, 
                     help='steps to execute (default: download-inputs)', default='download-inputs', dest='step')
 parser.add_argument('--identifier', type=str, 
                     help='commonwealth id', dest='identifier')
@@ -108,6 +108,8 @@ def allmapsTransform():
 
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
+
+    mergeArray = []
     
     for f in os.listdir(path):
         isFile = os.path.isfile(path+f)
@@ -126,14 +128,34 @@ def allmapsTransform():
                 stdout=footprint
             )
 
-            # # close geojsons using geopandas
+            # just to be safe,
+            # close geojsons using geopandas
 
-            # schema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
-            # gdf = gpd.read_file(outPath+name)
-            # gdf.to_file(outPath+name, driver="GeoJSON", schema=schema)
+            schema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
+            gdf = gpd.read_file(outPath+name)
+            gdf.to_file(outPath+name, driver="GeoJSON", schema=schema)
     
     print("✅ All pixel masks transformed!")
     print(" ")
+    print("Generating boundary file...")
+    print(" ")
+
+    masks = glob.iglob(outPath+'*.geojson')
+    gdfs = [gpd.read_file(mask) for mask in masks]
+    # print(gdfs)
+
+    merged = gpd.pd.concat(gdfs)
+    dissolved = merged.dissolve()
+    dissolved.to_file("output/footprint.geojson", driver="GeoJSON", schema=schema)
+
+    # for l in os.listdir(outPath):
+    #     mergeArray.append(l)
+    
+    # mergeLayers = gpd.read_file(mergeArray)
+    # merged = gpd.pd.concat(mergeLayers)
+    # merged.to_file(outPath+"boundry.geojson", driver="GeoJSON", schema=schema)
+
+    print("✅ Boundary file generated!")
     print("You can now proceed to the `warp-plates` step.")
     print(" ")
 
@@ -248,9 +270,30 @@ def mosaicPlates():
         srcNodata = 0
         )
 
-    gdal.BuildVRT('./mosaic.vrt', warpedPlates, options=vrtOptions)
+    gdal.BuildVRT('output/mosaic.vrt', warpedPlates, options=vrtOptions)
 
-    print('🎉 Completed creating the VRT. You can now feed this directly to gdal2tiles!')
+    print('🎉 Completed creating the VRT. You can now run the final command, `create-xyz`!')
+
+    return
+
+def createXYZ():
+    path="./"
+    outPath="output"
+    # tiles=open(outPath, "w")
+
+    cmd = [
+        "gdal2tiles.py", "--xyz", "-z", "13-20", "--exclude", "--processes", "4", "output/mosaic.vrt", "output/tiles"
+    ]
+
+    print("Beginning to generate XYZ tiles...")
+
+    subprocess.run(
+        cmd,
+        cwd=path
+        # stdout=tiles
+    )
+
+    print('🎉 XYZ tiles have been created. All files are in the `output` directory, ready to be ingested into Atlascope!')
 
     return
 
@@ -307,6 +350,9 @@ if __name__ == "__main__":
         
         elif args.step == 'mosaic-plates':
             mosaicPlates()
+
+        elif args.step =='create-xyz':
+            createXYZ()
 
         else:
             print("We haven't made this step do anything yet")

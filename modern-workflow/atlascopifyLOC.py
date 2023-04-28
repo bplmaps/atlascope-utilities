@@ -14,7 +14,7 @@ from os import path
 
 
 parser = argparse.ArgumentParser(description='Tools to help in the process of geotransforming urban atlases.')
-parser.add_argument('--step', metavar='{download-inputs, create-footprint, warp-plates}', type=str, 
+parser.add_argument('--step', metavar='{download-inputs, create-footprint, warp-plates, mosaic-plates, create-xyz}', type=str, 
                     help='steps to execute (default: download-inputs)', default='download-inputs', dest='step')
 parser.add_argument('--identifier', type=str, 
                     help='commonwealth id', dest='identifier')
@@ -205,6 +205,7 @@ def warpPlates():
                                     resampleAlg='cubic',
                                     dstAlpha=True,
                                     dstNodata=0,
+                                    polynomialOrder=1,
                                     xRes=0.1,
                                     yRes=0.1,
                                     targetAlignedPixels=True,
@@ -245,9 +246,30 @@ def mosaicPlates():
         srcNodata = 0
         )
 
-    gdal.BuildVRT('./mosaic.vrt', warpedPlates, options=vrtOptions)
+    gdal.BuildVRT('tmp/mosaic.vrt', warpedPlates, options=vrtOptions)
 
-    print('🎉 Completed creating the VRT. You can now feed this directly to gdal2tiles!')
+    print('🎉 Completed creating the VRT. You can now run the final command, `create-xyz`!')
+
+    return
+
+def createXYZ():
+    path="./"
+    outPath="output"
+    # tiles=open(outPath, "w")
+
+    cmd = [
+        "gdal2tiles.py", "--xyz", "-z", "13-20", "--exclude", "--processes", "4", "tmp/mosaic.vrt", "output/tiles"
+    ]
+
+    print("Beginning to generate XYZ tiles...")
+
+    subprocess.run(
+        cmd,
+        cwd=path
+        # stdout=tiles
+    )
+
+    print('🎉 XYZ tiles have been created. All files are in the `output` directory, ready to be ingested into Atlascope!')
 
     return
 
@@ -297,6 +319,9 @@ if __name__ == "__main__":
         
         elif args.step == 'mosaic-plates':
             mosaicPlates()
+
+        elif args.step =='create-xyz':
+            createXYZ()
 
         else:
             print("We haven't made this step do anything yet")

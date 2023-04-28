@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 
 import argparse
-import fiona
 import requests
 import os
 import json
 import subprocess
-from osgeo import gdal
+from osgeo import gdal, ogr
+import pandas as pd
+import numpy as np
 import geopandas as gpd
 from pyproj import Transformer
-import numpy as np
 from os import path
 import traceback
-import sys
 import glob
 
 parser = argparse.ArgumentParser(description='Tools to help in the process of geotransforming urban atlases.')
@@ -34,14 +33,14 @@ def downloadInputs(identifier):
     allmapsAPIRequest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json')
     allmapsManifest = allmapsAPIRequest.json()
     
-    counter = 0
+    counter = 1
 
     # create an empty list to hold the images we're going to later download
     imagesList = []
 
     # use the Allmaps API to
     # iterate through images in a 
-    # get all the Map IDs
+    # get all the Map IDs 
 
     for item in allmapsManifest['items']:
 
@@ -65,8 +64,6 @@ def downloadInputs(identifier):
 
         with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
             json.dump(allmapsAnnotation, f)
-
-        counter = counter+1
     
     print("✅ All annotations downloaded!")
 
@@ -108,8 +105,6 @@ def allmapsTransform():
 
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
-
-    mergeArray = []
     
     for f in os.listdir(path):
         isFile = os.path.isfile(path+f)
@@ -131,33 +126,43 @@ def allmapsTransform():
             # just to be safe,
             # close geojsons using geopandas
 
-            schema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
+            plateSchema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
             gdf = gpd.read_file(outPath+name)
-            gdf.to_file(outPath+name, driver="GeoJSON", schema=schema)
+            gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
     
     print("✅ All pixel masks transformed!")
     print(" ")
-    print("Generating boundary file...")
+    print("Generating `plates.geojson` file...")
     print(" ")
+
+    # concatenate (merge) masks using geopandas
+    # this can also be done with Allmaps CLI
+    # but it would require another subprocess
+    # so we use geopandas for now
 
     masks = glob.iglob(outPath+'*.geojson')
     gdfs = [gpd.read_file(mask) for mask in masks]
-    # print(gdfs)
-
     merged = gpd.pd.concat(gdfs)
-    dissolved = merged.dissolve()
-    dissolved.to_file("output/footprint.geojson", driver="GeoJSON", schema=schema)
-
-    # for l in os.listdir(outPath):
-    #     mergeArray.append(l)
+    merged.to_file("output/plates.geojson", driver="GeoJSON", schema=plateSchema)
     
-    # mergeLayers = gpd.read_file(mergeArray)
-    # merged = gpd.pd.concat(mergeLayers)
-    # merged.to_file(outPath+"boundry.geojson", driver="GeoJSON", schema=schema)
+    ###########################################
+    # TO DO: ADD API CALLS TO CONFORM         #
+    # METADATA FIELDS IN `PLATES.GEOJSON`     #
+    # WITH REQUIRED FIELDS FROM PLATE SCHEMA  #
+    ###########################################
+    
+    # extentSchema = {"geometry": "Polygon", "properties": {"geometry": "float"}}
 
-    print("✅ Boundary file generated!")
+    ###############################
+    # TO DO: CREATE LIBRARY USING #
+    # GEOPANDAS OR SHAPELY        #
+    ###############################
+
+    # diss = merged.dissolve()
+    # diss.to_file("output/platesDissolved.geojson", driver="GeoJSON", schema=plateSchema)
+
+    print("✅ `plates.geojson` file generated")
     print("You can now proceed to the `warp-plates` step.")
-    print(" ")
 
     return
 
@@ -270,7 +275,7 @@ def mosaicPlates():
         srcNodata = 0
         )
 
-    gdal.BuildVRT('output/mosaic.vrt', warpedPlates, options=vrtOptions)
+    gdal.BuildVRT('tmp/mosaic.vrt', warpedPlates, options=vrtOptions)
 
     print('🎉 Completed creating the VRT. You can now run the final command, `create-xyz`!')
 
@@ -282,7 +287,7 @@ def createXYZ():
     # tiles=open(outPath, "w")
 
     cmd = [
-        "gdal2tiles.py", "--xyz", "-z", "13-20", "--exclude", "--processes", "4", "output/mosaic.vrt", "output/tiles"
+        "gdal2tiles.py", "--xyz", "-z", "13-20", "--exclude", "--processes", "4", "tmp/mosaic.vrt", "output/tiles"
     ]
 
     print("Beginning to generate XYZ tiles...")

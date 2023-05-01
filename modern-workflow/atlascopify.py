@@ -9,6 +9,8 @@ from osgeo import gdal, ogr
 import pandas as pd
 import numpy as np
 import geopandas as gpd
+from shapely import geometry
+from shapely.geometry import Polygon, MultiPolygon
 from pyproj import Transformer
 from os import path
 import traceback
@@ -19,6 +21,8 @@ parser.add_argument('--step', metavar='{download-inputs, create-footprint, warp-
                     help='steps to execute (default: download-inputs)', default='download-inputs', dest='step')
 parser.add_argument('--identifier', type=str, 
                     help='commonwealth id', dest='identifier')
+parser.add_argument('--skip-exist', type=str,
+                    help='skip if exists', dest='')
 
 args = parser.parse_args()
 
@@ -136,29 +140,19 @@ def allmapsTransform():
     print(" ")
 
     # concatenate (merge) masks using geopandas
-    # this can also be done with Allmaps CLI
+    # this can also be done with Allmaps CLI,
     # but it would require another subprocess
     # so we use geopandas for now
 
     masks = glob.iglob(outPath+'*.geojson')
     gdfs = [gpd.read_file(mask) for mask in masks]
-    merged = gpd.pd.concat(gdfs)
-    merged.to_file("output/plates.geojson", driver="GeoJSON", schema=plateSchema)
-    
-    ###########################################
-    # TO DO: ADD API CALLS TO CONFORM         #
-    # METADATA FIELDS IN `PLATES.GEOJSON`     #
-    # WITH REQUIRED FIELDS FROM PLATE SCHEMA  #
-    ###########################################
-    
-    # extentSchema = {"geometry": "Polygon", "properties": {"geometry": "float"}}
+    plates = gpd.pd.concat(gdfs)
+    fields = ['identifier', 'name', 'allmapsMapID', 'digitalCollectionsPermalinkPlate']
+    plates[fields] = ''
+    platesSchema = {"geometry": "Polygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
+    plates.to_file("output/plates.geojson", driver="GeoJSON", schema=platesSchema)
 
-    ###############################
-    # TO DO: CREATE LIBRARY USING #
-    # GEOPANDAS OR SHAPELY        #
-    ###############################
-
-    # diss = merged.dissolve()
+    # diss = plates.dissolve()
     # diss.to_file("output/platesDissolved.geojson", driver="GeoJSON", schema=plateSchema)
 
     print("✅ `plates.geojson` file generated")

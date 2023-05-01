@@ -1,0 +1,20 @@
+{
+  "name": "modern-workflow",
+  "version": "1.0.0",
+  "description": "This script consumes Allmaps georeference annotations and transforms them into XYZ tilesets",
+  "main": "atlascopify.py",
+  "license": "MIT",
+  "dependencies": {
+    "argparse": "^2.0.1",
+    "glob": "^10.2.2",
+    "json": "^11.0.0",
+    "numpy": "^0.0.1",
+    "os": "^0.1.2",
+    "pandas": "^0.0.3",
+    "pyproj": "^1.0.1",
+    "requests": "^0.3.0",
+    "shapely": "^0.2.3",
+    "subprocess": "^0.3.0",
+    "traceback": "^0.3.1"
+  }
+}

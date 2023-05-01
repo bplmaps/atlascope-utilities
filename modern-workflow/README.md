@@ -1,4 +1,4 @@
-# Geotransforming urban atlases using Allmaps and GDAL
+# How to use this script
 
 Taking as its argument a Commonwealth ID from LMEC digital collections, `atlascopify.py` will:
 

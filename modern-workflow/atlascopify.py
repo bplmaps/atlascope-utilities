@@ -253,7 +253,7 @@ def warpPlates():
 def mosaicPlates():
 
     warpedPlates = []
-    path = "./tmp/warped/"
+    path = "tmp/warped/"
 
     for f in os.listdir(path):
         isFile = os.path.isfile(path+f)

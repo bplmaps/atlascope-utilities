@@ -9,8 +9,6 @@ from osgeo import gdal, ogr
 import pandas as pd
 import numpy as np
 import geopandas as gpd
-from shapely import geometry
-from shapely.geometry import Polygon, MultiPolygon
 from pyproj import Transformer
 from os import path
 import traceback
@@ -162,11 +160,18 @@ def allmapsTransform():
 
 def warpPlates():
 
+    badMaskIDs = []
+    badMasks = []
+    noCutlineIDs = []
+    noCutlines = []
+
     print(f'🏔 Registering GCPs from annotation')
 
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
     
     path="./tmp/annotations/"
+
+    gdal.UseExceptions()
 
     for file in os.listdir(path):
         isFile = os.path.isfile(path+file)
@@ -227,28 +232,89 @@ def warpPlates():
                                     cropToCutline=True
                                     )
 
-            print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')
-
             warpedPlate = f'./tmp/warped/{mapId}-warped.tif'
             isFile = os.path.isfile(warpedPlate)
 
             # check if warped map already exists
             # if so, skip; otherwise, warp
-            
+
             if isFile == True:
-                print(f'⏭️ Skipping {warpedPlate}, already exists...')
+                print(f'⏭️   Skipping {warpedPlate}, already exists...')
+                os.remove(f'./tmp/img/{mapId}-translated.tif')
             else:
 
-                gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
-                            f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
+                # warp
 
-                print(f'🚮 Deleting temporary translate file for {mapId}.json')
-                os.remove(f'./tmp/img/{mapId}-translated.tif')
+                try:
+                    print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')
+                    gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
+                                f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
 
-    print("✅ All maps have been warped!")
-    print(" ")
-    print("You can now proceed to the final step, `mosaic-plates`.")
-    print(" ")
+                    print(f'🚮   Deleting temporary translate file for {mapId}.json')
+                    os.remove(f'./tmp/img/{mapId}-translated.tif')
+
+                # if warp fails, detect why
+
+                except RuntimeError as e:
+                    error = str(e)
+                    cutlineMissing = "cutline features"
+                    
+                    # get LMEC URI of this image using Allmaps API
+                    # to be printed at the end of runtime
+                    
+                    request = requests.get(f'https://api.allmaps.org/maps/{mapId}')
+                    response = request.json()
+                    uri = response['image']['uri']
+
+                    # detect `no cutline` errors
+                    # this sucks though. fix later
+
+                    if cutlineMissing in error:
+                        print("⁉️   Did not get any cutline features.")
+                        noCutlines.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
+                        noCutlineIDs.append(mapId)
+                        os.remove(f'./tmp/img/{mapId}-translated.tif')
+
+                    # otherwise, detect bad masks
+
+                    else:
+                        print("❌   Warp failed due to bad mask.")
+
+                        badMasks.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
+                        badMaskIDs.append(mapId)
+                        os.remove(f'./tmp/img/{mapId}-translated.tif')
+
+
+    if not (badMasks or noCutlines):
+        print(" ")
+        print("✅   All maps have been warped!")
+        print(" ")
+        print("You can now proceed to the final step, `mosaic-plates`.")
+        print(" ")
+    else:
+        print(" ")
+        print("‼️   Errors were encountered. Fix the following:")
+        print(" ")
+        pd.set_option('display.max_colwidth', None)
+
+        if not badMasks:
+            pass
+        else:
+            maskdata = {'Allmaps Map ID': badMaskIDs, 'Fix Bad Masks': badMasks}
+            maskdf = pd.DataFrame(data=maskdata)
+            print("Fix Bad Masks")
+            print(" ")
+            print(maskdf)
+            print(" ")
+        if not noCutlines:
+            pass
+        else:
+            cutlinedata = {'Allmaps Map ID': noCutlineIDs, 'Fix No Cutline': noCutlines}
+            cutlinedf = pd.DataFrame(data=cutlinedata)
+            print("Fix No Cutlines:")
+            print(" ")
+            print(cutlinedf)
+            print(" ")
 
 def mosaicPlates():
 

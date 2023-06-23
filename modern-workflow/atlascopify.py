@@ -6,6 +6,8 @@ import os
 import json
 import subprocess
 from osgeo import gdal, ogr
+from shapely import wkt
+import shapely as geom
 import pandas as pd
 import numpy as np
 import geopandas as gpd
@@ -31,7 +33,6 @@ args = parser.parse_args()
 def downloadInputs(identifier):
 
     # ask allmaps API what the Allmaps ID is for the Commonwealth Manifest ID we sent over
-
     allmapsAPIRequest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json')
     allmapsManifest = allmapsAPIRequest.json()
     
@@ -67,7 +68,7 @@ def downloadInputs(identifier):
         with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
             json.dump(allmapsAnnotation, f)
     
-    print("✅ All annotations downloaded!")
+    print("✅   All annotations downloaded!")
 
     # now walk through all the images that were mentioned in annotations
 
@@ -91,8 +92,34 @@ def downloadInputs(identifier):
                 for chunk in imageRequest.iter_content(chunk_size=128):
                     fd.write(chunk)
 
-    print("✅ All images downloaded!")
-    print(" ")
+    print("✅   All images downloaded!")
+    
+    print("Creating template `tileset.json` file...")
+
+    template = {
+        "tilejson": "2.2.0",
+        "name": "place year",
+        "description": "Title (Author, Year)",
+        "version": "1.0.0",
+        "attribution": "<a href=\"https://leventhalmap.org\">Leventhal Map & Education Center</a> at the <a href=\"https://bpl.org\">Boston Public Library</a>",
+        "scheme": "xyz",
+        "tiles": [
+            "https://s3.us-east-2.wasabisys.com/urbanatlases/ARK_ID/tiles/{z}/{x}/{y}.png"
+        ],
+        "data": [
+            "https://s3.us-east-2.wasabisys.com/urbanatlases/ARK_ID/plates.geojson"
+        ],
+        "minzoom": "13",
+        "maxzoom": "20",
+        "bounds": []
+    }
+    
+    tileset = open('output/tileset.json', 'w+')
+    tileset.write(json.dumps(template, indent=2))
+    tileset.close()
+
+    print("✅   Template `tileset.json` file created in `output` directory!")
+
     print("You can now proceed to the `allmaps-transform` step.")
     print(" ")
 
@@ -132,7 +159,7 @@ def allmapsTransform():
             gdf = gpd.read_file(outPath+name)
             gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
     
-    print("✅ All pixel masks transformed!")
+    print("✅   All pixel masks transformed!")
     print(" ")
     print("Generating `plates.geojson` file...")
     print(" ")
@@ -147,13 +174,61 @@ def allmapsTransform():
     plates = gpd.pd.concat(gdfs)
     fields = ['identifier', 'name', 'allmapsMapID', 'digitalCollectionsPermalinkPlate']
     plates[fields] = ''
-    platesSchema = {"geometry": "Polygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
-    plates.to_file("output/plates.geojson", driver="GeoJSON", schema=platesSchema)
+    polySchema = {"geometry": "Polygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
+    multipolySchema = {"geometry": "MultiPolygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
+    plates.to_file("output/plates.geojson", driver="GeoJSON", schema=polySchema)
 
-    # diss = plates.dissolve()
-    # diss.to_file("output/platesDissolved.geojson", driver="GeoJSON", schema=plateSchema)
+    print("✅   `plates.geojson` file generated")
 
-    print("✅ `plates.geojson` file generated")
+    # # try multipolygon; if fails, try regular polygon
+    
+    # try:
+    #     diss = plates.dissolve()
+    #     diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
+    #     diss_wkt = diss['geometry'].to_wkt()
+    #     holes = wkt.loads(diss_wkt)
+        
+    #     list_interiors = []
+    #     eps = 1
+        
+    #     for interior in holes.interiors:
+    #         p = geom.Polygon(interior)    
+    #         if p.area > eps:
+    #             list_interiors.append(interior)
+
+    #     noHoles = geom.Polygon(holes.exterior.coords, holes=list_interiors)
+    #     noHoles.toFile("tmp/plates-for-extents.geojson", driver="GeoJSON", schema=polySchema)
+    # except:
+    #     try:
+    #         diss = plates.dissolve()
+    #         diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=multipolySchema)
+    #         diss_wkt = diss['geometry'].to_wkt()
+    #         holes = wkt.loads(diss_wkt)
+            
+    #         list_parts = []
+    #         eps = 1
+
+    #         print(holes)
+
+    #         for polygon in holes.geoms:
+    #             print(polygon)
+    #             list_interiors = []
+    #             for interior in polygon.interiors:
+    #                 print(interior)
+    #                 p = geom.Polygon(interior)
+    #                 if p.area > eps:
+    #                     list_interiors.append(interior)
+
+    #         temp_pol = geom.Polygon(polygon.exterior.coords, holes=list_interiors)
+    #         list_parts.append(temp_pol)
+        
+    #         noHoles = geom.MultiPolygon(list_parts)
+    #         noHoles.toFile("tmp/plates-for-extents.geojson", driver="GeoJSON", schema=multipolySchema)
+    #     except:
+    #         pass
+
+    print("✅   `plates-dissolved.geojson` file saved to `output` directory")
+    print(" ")
     print("You can now proceed to the `warp-plates` step.")
 
     return
@@ -293,7 +368,7 @@ def warpPlates():
         print(" ")
     else:
         print(" ")
-        print("‼️   Errors were encountered. Fix the following:")
+        print(f"‼️   Errors were encountered. Fix the following and then re-run steps 1-3 for this atlas.")
         print(" ")
         pd.set_option('display.max_colwidth', None)
 
@@ -318,13 +393,29 @@ def warpPlates():
 
 def mosaicPlates():
 
-    warpedPlates = []
+    warpedPlates = {}
+    platesForMosaic = []
+
     path = "tmp/warped/"
+
+    # create dict of k/v pairs with filepath: size
 
     for f in os.listdir(path):
         isFile = os.path.isfile(path+f)
         if not f.startswith('.') and isFile == True and f.endswith('.tif'):
-            warpedPlates.append(path+f)
+            plate = path+f
+            size = os.path.getsize(plate)
+            warpedPlates[plate] = size
+    
+    # sort the dict from small to large size
+
+    sortedPlates = sorted(warpedPlates.items(), key=lambda x:x[1], reverse=True)
+
+    # append files to new list to be mosaiqued
+    # from largest to smallest
+
+    for f in sortedPlates:
+        platesForMosaic.append(f[0])
 
     print('➡️  Beginning to create VRT')
 
@@ -335,7 +426,7 @@ def mosaicPlates():
         srcNodata = 0
         )
 
-    gdal.BuildVRT('tmp/mosaic.vrt', warpedPlates, options=vrtOptions)
+    gdal.BuildVRT('tmp/mosaic.vrt', platesForMosaic, options=vrtOptions)
 
     print('🎉 Completed creating the VRT. You can now run the final command, `create-xyz`!')
 

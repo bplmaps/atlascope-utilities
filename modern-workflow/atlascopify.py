@@ -35,8 +35,6 @@ def downloadInputs(identifier):
     # ask allmaps API what the Allmaps ID is for the Commonwealth Manifest ID we sent over
     allmapsAPIRequest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json')
     allmapsManifest = allmapsAPIRequest.json()
-    
-    counter = 1
 
     # create an empty list to hold the images we're going to later download
     imagesList = []
@@ -180,56 +178,15 @@ def allmapsTransform():
 
     print("✅   `plates.geojson` file generated")
 
-    # # try multipolygon; if fails, try regular polygon
-    
-    # try:
-    #     diss = plates.dissolve()
-    #     diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
-    #     diss_wkt = diss['geometry'].to_wkt()
-    #     holes = wkt.loads(diss_wkt)
-        
-    #     list_interiors = []
-    #     eps = 1
-        
-    #     for interior in holes.interiors:
-    #         p = geom.Polygon(interior)    
-    #         if p.area > eps:
-    #             list_interiors.append(interior)
+    # dissolve plates file
 
-    #     noHoles = geom.Polygon(holes.exterior.coords, holes=list_interiors)
-    #     noHoles.toFile("tmp/plates-for-extents.geojson", driver="GeoJSON", schema=polySchema)
-    # except:
-    #     try:
-    #         diss = plates.dissolve()
-    #         diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=multipolySchema)
-    #         diss_wkt = diss['geometry'].to_wkt()
-    #         holes = wkt.loads(diss_wkt)
-            
-    #         list_parts = []
-    #         eps = 1
-
-    #         print(holes)
-
-    #         for polygon in holes.geoms:
-    #             print(polygon)
-    #             list_interiors = []
-    #             for interior in polygon.interiors:
-    #                 print(interior)
-    #                 p = geom.Polygon(interior)
-    #                 if p.area > eps:
-    #                     list_interiors.append(interior)
-
-    #         temp_pol = geom.Polygon(polygon.exterior.coords, holes=list_interiors)
-    #         list_parts.append(temp_pol)
-        
-    #         noHoles = geom.MultiPolygon(list_parts)
-    #         noHoles.toFile("tmp/plates-for-extents.geojson", driver="GeoJSON", schema=multipolySchema)
-    #     except:
-    #         pass
+    diss = plates.dissolve()
+    diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
 
     print("✅   `plates-dissolved.geojson` file saved to `output` directory")
     print(" ")
-    print("You can now proceed to the `warp-plates` step.")
+    print("‼️‼️   Before proceeding to the `warp-plates` step, check the `plates-dissolved.geojson` file for small holes.")
+    print("‼️‼️   If you find any, edit the masks in Allmaps to remove them.")
 
     return
 
@@ -239,9 +196,6 @@ def warpPlates():
     badMasks = []
     noCutlineIDs = []
     noCutlines = []
-
-    print(f'🏔 Registering GCPs from annotation')
-
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
     
     path="./tmp/annotations/"
@@ -252,8 +206,8 @@ def warpPlates():
         isFile = os.path.isfile(path+file)
         if not file.startswith('.') and isFile == True:
 
+            print(f'🏔   Registering GCPs from annotation {mapId}')
             anno = open(path+file)
-
             annoJson = json.load(anno)
             commonwealthUrl = annoJson['items'][0]['target']['source']
             commId = (commonwealthUrl[57:-24])
@@ -364,7 +318,7 @@ def warpPlates():
         print(" ")
         print("✅   All maps have been warped!")
         print(" ")
-        print("You can now proceed to the final step, `mosaic-plates`.")
+        print("You can now proceed to the `mosaic-plates` step.")
         print(" ")
     else:
         print(" ")

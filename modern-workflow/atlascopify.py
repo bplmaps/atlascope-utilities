@@ -132,7 +132,8 @@ def allmapsTransform():
 
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
-    
+    topologyCheck = []
+
     for f in os.listdir(path):
         isFile = os.path.isfile(path+f)
         if not f.startswith('.') and isFile == True:
@@ -150,11 +151,14 @@ def allmapsTransform():
                 stdout=footprint
             )
 
-            # just to be safe,
-            # close geojsons using geopandas
-
             plateSchema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
             gdf = gpd.read_file(outPath+name)
+
+            # check topology of geojson
+            topoCheck = gdf.is_valid
+            print(topoCheck)
+
+            # save geojson to file
             gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
     
     print("✅   All pixel masks transformed!")

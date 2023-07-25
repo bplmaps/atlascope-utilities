@@ -181,7 +181,12 @@ def allmapsTransform():
     # dissolve plates file
 
     diss = plates.dissolve()
-    diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
+
+    multiPolyCheck = 'MultiPolygon' in diss['geometry'].geom_type.values
+    if multiPolyCheck == True:
+        diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=multipolySchema)
+    else:
+        diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
 
     print("✅   `plates-dissolved.geojson` file saved to `output` directory")
     print(" ")
@@ -206,7 +211,7 @@ def warpPlates():
         isFile = os.path.isfile(path+file)
         if not file.startswith('.') and isFile == True:
 
-            print(f'🏔   Registering GCPs from annotation {mapId}')
+            print(f'🏔   Registering GCPs from annotation...')
             anno = open(path+file)
             annoJson = json.load(anno)
             commonwealthUrl = annoJson['items'][0]['target']['source']

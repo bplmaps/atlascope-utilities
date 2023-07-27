@@ -16,6 +16,14 @@ from os import path
 import traceback
 import glob
 
+#########################################
+#####                               #####
+#####    STEP 0: set arguments      #####
+#####    so script can be run       #####
+#####    from the command line      #####
+#####                               #####
+#########################################
+
 parser = argparse.ArgumentParser(description='Tools to help in the process of geotransforming urban atlases.')
 parser.add_argument('--step', metavar='{download-inputs, create-footprint, warp-plates, mosaic-plates, create-xyz}', type=str, 
                     help='steps to execute (default: download-inputs)', default='download-inputs', dest='step')
@@ -23,75 +31,70 @@ parser.add_argument('--identifier', type=str,
                     help='commonwealth id', dest='identifier')
 parser.add_argument('--skip-exist', type=str,
                     help='skip if exists', dest='')
-
 args = parser.parse_args()
 
-# we run the `downloadInputs` function
-# to pull all of the necessary georeference annotations
-# and TIFF images onto our local machine
+#########################################
+#####                               #####
+#####    STEP 1: `downloadInputs`   #####
+#####    to retrieve all georef     #####
+#####    annotations and images     #####
+#####                               #####
+#########################################
 
 def downloadInputs(identifier):
 
-    # ask allmaps API what the Allmaps ID is for the Commonwealth Manifest ID we sent over
+    # get Allmaps manifest as JSON
+    # create empty list to hold image filenames
+
     allmapsAPIRequest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json')
     allmapsManifest = allmapsAPIRequest.json()
-
-    # create an empty list to hold the images we're going to later download
     imagesList = []
 
-    # use the Allmaps API to
-    # iterate through images in a 
-    # get all the Map IDs 
+    # download each map in the manifest
 
+    print(len((allmapsManifest)['items']))
     for item in allmapsManifest['items']:
-
         allmapsMapID = item['id']
         mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
         print(f'⤵️ Downloading annotation {mapURL}')
-            
-        # download each JSON annotation for each of those Map IDs
-
         annoRequest = requests.get(mapURL, stream=True)
         allmapsAnnotation = annoRequest.json()
 
-        # write all the images we're later going to need to download into an array,
-        # but skip if image already appears in array
-        # so we don't download multiple times.
-        # then rewrite the jpg suffix to tif
+        # add Allmaps map ID, suffixed with .tif, to image filename list
 
         for item in allmapsAnnotation["items"]:
             if item["target"]["source"].replace(".jpg", ".tif") not in imagesList:
                 imagesList.append( item["target"]["source"].replace(".jpg", ".tif") )
+        
+        # save each map's georef annotation as JSON file
 
         with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
             json.dump(allmapsAnnotation, f)
     
     print("✅   All annotations downloaded!")
 
-    # now walk through all the images that were mentioned in annotations
+    # loop through image filename list
 
     for image in imagesList:
 
         imgFile = f'./tmp/img/{image.split("commonwealth:")[1][0:9] }.tif'
         isFile = os.path.isfile(imgFile)
-        print(image)
-
-        # check if image file already exists
-        # if so, skip; otherwise, download
         
+        # download any images not present in directory
+
         if isFile == True:
             print(f'⏭️ Skipping {imgFile}, already exists...')
         else:
             print(f'⤵️ Downloading image {image}')
-
             imageRequest = requests.get(image, stream=True)
-
             with open(imgFile, 'wb') as fd:
                 for chunk in imageRequest.iter_content(chunk_size=128):
                     fd.write(chunk)
 
     print("✅   All images downloaded!")
     
+    # create template tileJSON file
+
     print("Creating template `tileset.json` file...")
 
     template = {
@@ -117,48 +120,47 @@ def downloadInputs(identifier):
     tileset.close()
 
     print("✅   Template `tileset.json` file created in `output` directory!")
-
     print("You can now proceed to the `allmaps-transform` step.")
     print(" ")
 
-# we run the `allmapsTransform` function
-# to transform the Allmaps pixel mask
-# into a .geojson
+#########################################
+#####                               #####
+#####   STEP 2: `allmapsTransform`  #####
+#####   to transform pixel mask     #####
+#####       into a .geojson         #####
+#####                               #####
+#########################################
 
 def allmapsTransform():
     
-    if not os.path.exists('./tmp/annotations/transformed'):
-        os.mkdir('./tmp/annotations/transformed') 
+    # define path variables
 
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
-    topologyCheck = []
+    topoCheck = []
 
+    # loop through directory and 
+    # transform each JSON into GeoJSON
+    # using Allmaps CLI as subprocess
+    
     for f in os.listdir(path):
         isFile = os.path.isfile(path+f)
         if not f.startswith('.') and isFile == True:
             print(f'⤵️ Transforming {f} into a geojson...')
             name = os.path.splitext(f)[0]+'-transformed.geojson'
             footprint = open(outPath+name, "w")
-            
-            cmd = [
-                "allmaps", "transform", "pixel-mask", f
-            ]
-
-            subprocess.run(
-                cmd,
-                cwd=path,
-                stdout=footprint
-            )
-
+            cmd = ["allmaps", "transform", "pixel-mask", f]
+            subprocess.run(cmd, cwd=path, stdout=footprint)
             plateSchema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
             gdf = gpd.read_file(outPath+name)
 
             # check topology of geojson
-            topoCheck = gdf.is_valid
-            print(topoCheck)
+
+            topoValid = gdf.is_valid
+            topoCheck.append(topoValid)
 
             # save geojson to file
+
             gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
     
     print("✅   All pixel masks transformed!")
@@ -166,10 +168,7 @@ def allmapsTransform():
     print("Generating `plates.geojson` file...")
     print(" ")
 
-    # concatenate (merge) masks using geopandas
-    # this can also be done with Allmaps CLI,
-    # but it would require another subprocess
-    # so we use geopandas for now
+    # merge masks using geopandas
 
     masks = glob.iglob(outPath+'*.geojson')
     gdfs = [gpd.read_file(mask) for mask in masks]
@@ -182,10 +181,10 @@ def allmapsTransform():
 
     print("✅   `plates.geojson` file generated")
 
-    # dissolve plates file
+    # dissolve plates file and
+    # save according to geometry type
 
     diss = plates.dissolve()
-
     multiPolyCheck = 'MultiPolygon' in diss['geometry'].geom_type.values
     if multiPolyCheck == True:
         diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=multipolySchema)
@@ -199,17 +198,29 @@ def allmapsTransform():
 
     return
 
+#########################################
+#####                               #####
+#####       STEP 3: `warpPlates`    #####
+#####       to turn map images      #####
+#####         into GeoTIFFs         #####
+#####                               #####
+#########################################
+
 def warpPlates():
 
+    # create empty lists for error handling and
+    # set transformation and path variables
+
+    gdal.UseExceptions()
     badMaskIDs = []
     badMasks = []
     noCutlineIDs = []
     noCutlines = []
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
-    
     path="./tmp/annotations/"
 
-    gdal.UseExceptions()
+    # loop through annotations and
+    # perform GDAL warp
 
     for file in os.listdir(path):
         isFile = os.path.isfile(path+file)
@@ -221,6 +232,8 @@ def warpPlates():
             commonwealthUrl = annoJson['items'][0]['target']['source']
             commId = (commonwealthUrl[57:-24])
             
+            # correlate pixel and spatial coordinates
+            
             gcps = []
             for gcp in annoJson['items'][0]['body']['features']:
                     xt, yt = transformer.transform(
@@ -229,13 +242,17 @@ def warpPlates():
                     pixel = float(gcp['properties']['pixelCoords'][0])
                     g = gdal.GCP(xt, yt, 0, pixel, line)
                     gcps.append(g)
-
             sourceImg = gdal.Open(f'./tmp/img/{commId}.tif')
+            
+            # # nearblack hack
 
-            # # for b in [1, 2, 3]:
-            # # 	band = archivalImage.GetRasterBand(b)
-            # # 	readableBand = band.ReadAsArray()
-            # # 	readableBand[np.where(readableBand == 0)] = 1
+            # for b in [1, 2, 3]:
+            # 	band = archivalImage.GetRasterBand(b)
+            # 	readableBand = band.ReadAsArray()
+            # 	readableBand[np.where(readableBand == 0)] = 1
+
+            # set variables for GDAL translate and
+            # execute
 
             translateOptions = gdal.TranslateOptions(
                 format='GTiff',
@@ -244,15 +261,17 @@ def warpPlates():
             )
             
             mapId = os.path.splitext(file)[0]
-            
+
             gdal.Translate(
                 f'./tmp/img/{mapId}-translated.tif',
                 sourceImg,
                 options = translateOptions
             )
-            
+                        
+            # set options for GDAL warp and
+            # execute
+
             cutline = f'./tmp/annotations/transformed/{mapId}-transformed.geojson'
-            
             warpOptions = gdal.WarpOptions(
                                     format='GTiff',
                                     copyMetadata=True,
@@ -269,20 +288,13 @@ def warpPlates():
                                     cutlineDSName=cutline,
                                     cropToCutline=True
                                     )
-
             warpedPlate = f'./tmp/warped/{mapId}-warped.tif'
             isFile = os.path.isfile(warpedPlate)
-
-            # check if warped map already exists
-            # if so, skip; otherwise, warp
 
             if isFile == True:
                 print(f'⏭️   Skipping {warpedPlate}, already exists...')
                 os.remove(f'./tmp/img/{mapId}-translated.tif')
             else:
-
-                # warp
-
                 try:
                     print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')
                     gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
@@ -322,6 +334,8 @@ def warpPlates():
                         badMaskIDs.append(mapId)
                         os.remove(f'./tmp/img/{mapId}-translated.tif')
 
+    # print any plates that need fixing
+    # as pandas dataframe
 
     if not (badMasks or noCutlines):
         print(" ")
@@ -354,11 +368,21 @@ def warpPlates():
             print(cutlinedf)
             print(" ")
 
+#########################################
+#####                               #####
+#####     STEP 4: `mosaicPlates`    #####
+#####      to create virtually      #####
+#####        mosaiqued raster       #####
+#####                               #####
+#########################################
+
 def mosaicPlates():
+
+    # define empty dict/list for holding warped plates
+    # and set path
 
     warpedPlates = {}
     platesForMosaic = []
-
     path = "tmp/warped/"
 
     # create dict of k/v pairs with filepath: size
@@ -395,43 +419,60 @@ def mosaicPlates():
 
     return
 
-def createXYZ():
-    path="./"
-    outPath="output"
-    # tiles=open(outPath, "w")
+#########################################
+#####                               #####
+#####       STEP 5: `createXYZ`     #####
+#####         to create final       #####
+#####           XYZ tileset         #####
+#####                               #####
+#########################################
 
+def createXYZ():
+    
+    path="./"
     cmd = [
         "gdal2tiles.py", "--xyz", "-z", "13-20", "--exclude", "--processes", "4", "tmp/mosaic.vrt", "output/tiles"
     ]
-
     print("Beginning to generate XYZ tiles...")
-
     subprocess.run(
         cmd,
         cwd=path
-        # stdout=tiles
     )
 
     print('🎉 XYZ tiles have been created. All files are in the `output` directory, ready to be ingested into Atlascope!')
 
     return
 
+#########################################
+#####                               #####
+#####  `createDirectoryStructure`   #####
+#####   is run at every step to     #####
+#####    avoid funny business       #####
+#####                               #####
+#########################################
+
 def createDirectoryStructure():
-    if not os.path.exists('./tmp'):
+    d = os.path.exists
+    if not d('./tmp'):
         os.mkdir('./tmp')
-
-    if not os.path.exists('./tmp/img'):
+    if not d('./tmp/img'):
         os.mkdir('./tmp/img')
-
-    if not os.path.exists('./tmp/annotations'):
+    if not d('./tmp/annotations'):
         os.mkdir('./tmp/annotations')
-
-    if not os.path.exists('./tmp/warped'):
+    if not d('./tmp/warped'):
         os.mkdir('./tmp/warped')
-
-    if not os.path.exists('./output'):
+    if not d('./output'):
         os.mkdir('./output')
+    if not d('./tmp/annotations/transformed'):
+        os.mkdir('./tmp/annotations/transformed') 
 
+#########################################
+#####                               #####
+#####     define which functions    #####
+#####       are associated with     #####
+#####          which step           #####
+#####                               #####
+#########################################
 
 if __name__ == "__main__":
 
@@ -441,6 +482,7 @@ if __name__ == "__main__":
         print("\tatlascopify.py --step allmaps-transform")
         print("\tatlascopify.py --step warp-plates")
         print("\tatlascopify.py --step mosaic-plates")
+        print("\tatlascopify.py --step createXYZ")
         exit()
 
     else:

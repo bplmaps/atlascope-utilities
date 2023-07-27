@@ -15,6 +15,7 @@ from pyproj import Transformer
 from os import path
 import traceback
 import glob
+import csv
 
 #########################################
 #####                               #####
@@ -51,8 +52,10 @@ def downloadInputs(identifier):
     imagesList = []
 
     # download each map in the manifest
-
-    print(len((allmapsManifest)['items']))
+    num = len((allmapsManifest)['items'])
+    print(" ")
+    print(f"Beginning to download {num} annotations...")
+    print(" ")
     for item in allmapsManifest['items']:
         allmapsMapID = item['id']
         mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
@@ -137,13 +140,36 @@ def allmapsTransform():
 
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
-    topoCheck = []
+    invalidMasks = []
+    invalidIDs = []
+    lessThanThreePoints = []
+    lessThanThreeIDs = []
 
-    # loop through directory and 
+    # re-download annotations if error files exist
+
+    errorFiles = ["tmp/errors/invalidMasks.csv", "tmp/errors/invalidPoints.csv"]
+    for e in errorFiles:
+        errorFileExists = os.path.isfile(e)
+        if errorFileExists == True:
+            with open(e, 'r') as file:
+                reader = csv.reader(file)
+                next(reader)
+                for r in reader:
+                    allmapsMapID = r[1]
+                    mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
+                    print(f'⤵️ Re-downloading annotation {mapURL}')
+                    annoRequest = requests.get(mapURL, stream=True)
+                    allmapsAnnotation = annoRequest.json()               
+                    with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
+                        json.dump(allmapsAnnotation, f)
+
+
+    # loop through `path` and 
     # transform each JSON into GeoJSON
     # using Allmaps CLI as subprocess
     
     for f in os.listdir(path):
+        mapId = os.path.splitext(f)[0]
         isFile = os.path.isfile(path+f)
         if not f.startswith('.') and isFile == True:
             print(f'⤵️ Transforming {f} into a geojson...')
@@ -156,45 +182,105 @@ def allmapsTransform():
 
             # check topology of geojson
 
-            topoValid = gdf.is_valid
-            topoCheck.append(topoValid)
+            valid = gdf.is_valid
+            request = requests.get(f'https://api.allmaps.org/maps/{mapId}')
+            response = request.json()
+            uri = response['image']['uri']
+            try:
+                if valid[0] == True:
+                    pass
+                else:
+                    invalidMasks.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
+                    invalidIDs.append(mapId)
+            except IndexError as e:
+                error = str(e)
+                lessThanThreePoints.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
+                lessThanThreeIDs.append(mapId)
 
             # save geojson to file
 
             gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
     
-    print("✅   All pixel masks transformed!")
-    print(" ")
-    print("Generating `plates.geojson` file...")
-    print(" ")
+    # 
 
-    # merge masks using geopandas
+    if (invalidMasks or lessThanThreePoints):
+        print(" ")
+        print("‼️   Errors were encountered. Fix the following.")
+        print("‼️   Hold down `command` and double-click the links to open them in your browser.")
+        print("‼️   When you're done, rerun this step.")
+        print(" ")
+        if os.path.exists("tmp/errors") == False:
+            os.mkdir("tmp/errors")
+        pd.set_option('display.max_colwidth', None)
+        
+        if not invalidMasks:
+            pass
+        else:
+            maskData = {'Allmaps Map ID': invalidIDs, 'Fix Bad Masks': invalidMasks}
+            maskDf = pd.DataFrame(data=maskData)
+            print("Fix Bad Masks")
+            print(" ")
+            print(maskDf)
+            print(" ")
+            maskDf.to_csv("tmp/errors/invalidMasks.csv")
+        if not lessThanThreePoints:
+            pass
+        else:
+            ltpointsData = {'Allmaps Map ID': lessThanThreeIDs, 'Fix Maps With < 3 Points ': lessThanThreePoints}
+            ltpointsDf = pd.DataFrame(data=ltpointsData)
+            print("Fix Maps With < 3 Points:")
+            print(" ")
+            print(ltpointsDf)
+            print(" ")
+            ltpointsDf.to_csv("tmp/errors/invalidPoints.csv")
+        
+    # merge, dissolve
 
-    masks = glob.iglob(outPath+'*.geojson')
-    gdfs = [gpd.read_file(mask) for mask in masks]
-    plates = gpd.pd.concat(gdfs)
-    fields = ['identifier', 'name', 'allmapsMapID', 'digitalCollectionsPermalinkPlate']
-    plates[fields] = ''
-    polySchema = {"geometry": "Polygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
-    multipolySchema = {"geometry": "MultiPolygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
-    plates.to_file("output/plates.geojson", driver="GeoJSON", schema=polySchema)
-
-    print("✅   `plates.geojson` file generated")
-
-    # dissolve plates file and
-    # save according to geometry type
-
-    diss = plates.dissolve()
-    multiPolyCheck = 'MultiPolygon' in diss['geometry'].geom_type.values
-    if multiPolyCheck == True:
-        diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=multipolySchema)
     else:
-        diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
+        print(" ")
+        print("✅   All pixel masks transformed!")
+        print(" ")
+        print("Generating `plates.geojson` file...")
+        print(" ")
 
-    print("✅   `plates-dissolved.geojson` file saved to `output` directory")
-    print(" ")
-    print("‼️‼️   Before proceeding to the `warp-plates` step, check the `plates-dissolved.geojson` file for small holes.")
-    print("‼️‼️   If you find any, edit the masks in Allmaps to remove them.")
+        # merge masks using geopandas
+
+        masks = glob.iglob(outPath+'*.geojson')
+        plates = gpd.pd.concat([gpd.read_file(mask) for mask in masks])
+        fields = ['identifier', 'name', 'allmapsMapID', 'digitalCollectionsPermalinkPlate']
+        plates[fields] = ''
+        polySchema = {"geometry": "Polygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
+        multipolySchema = {"geometry": "MultiPolygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
+        plates.to_file("output/plates.geojson", driver="GeoJSON", schema=polySchema)
+        print("✅   `plates.geojson` file saved to `output` directory")
+
+        # dissolve plates file and
+        # save according to geometry type
+
+        print(" ")
+        print("Dissolving `plates.geojson` file...")
+        print(" ")
+        
+        try:
+            diss = plates.dissolve()
+            multiPolyCheck = 'MultiPolygon' in diss['geometry'].geom_type.values
+            if multiPolyCheck == True:
+                diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=multipolySchema)
+            else:
+                diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
+            print("✅   `plates-dissolved.geojson` file saved to `tmp` directory")
+            print(" ")
+            print("✅   All masks have been transformed and all `plates` files have been created!")
+            print(" ")
+            print("You can now proceed to the `warp-plates` step.")
+            print(" ")
+            print("‼️‼️   Before proceeding to the `warp-plates` step, check the `plates-dissolved.geojson` file for small holes.")
+            print("‼️‼️   If you find any, edit the masks in Allmaps to remove them. Then, re-run steps 1-2.")
+            print(" ")
+            if os.path.exists("tmp/errors") == True:
+                os.rmdir("tmp/errors")
+        except RuntimeError as e:
+            print(e)
 
     return
 

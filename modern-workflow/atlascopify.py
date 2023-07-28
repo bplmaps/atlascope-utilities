@@ -26,12 +26,13 @@ import csv
 #########################################
 
 parser = argparse.ArgumentParser(description='Tools to help in the process of geotransforming urban atlases.')
-parser.add_argument('--step', metavar='{download-inputs, create-footprint, warp-plates, mosaic-plates, create-xyz}', type=str, 
+parser.add_argument('--step', metavar='{download-inputs, allmaps-transform, warp-plates, mosaic-plates, create-xyz}', type=str, 
                     help='steps to execute (default: download-inputs)', default='download-inputs', dest='step')
 parser.add_argument('--identifier', type=str, 
                     help='commonwealth id', dest='identifier')
-parser.add_argument('--skip-exist', type=str,
-                    help='skip if exists', dest='')
+parser.add_argument('--sort-order', type=str,
+                    help='add txt file for plates sort order', dest='sort')
+
 args = parser.parse_args()
 
 #########################################
@@ -47,11 +48,11 @@ def downloadInputs(identifier):
     # get Allmaps manifest as JSON
     # create empty list to hold image filenames
 
-    allmapsAPIRequest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json')
-    allmapsManifest = allmapsAPIRequest.json()
+    allmapsManifest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json').json()
     imagesList = []
 
     # download each map in the manifest
+
     num = len((allmapsManifest)['items'])
     print(" ")
     print(f"Beginning to download {num} annotations...")
@@ -60,8 +61,7 @@ def downloadInputs(identifier):
         allmapsMapID = item['id']
         mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
         print(f'⤵️ Downloading annotation {mapURL}')
-        annoRequest = requests.get(mapURL, stream=True)
-        allmapsAnnotation = annoRequest.json()
+        allmapsAnnotation = requests.get(mapURL, stream=True).json()
 
         # add Allmaps map ID, suffixed with .tif, to image filename list
 
@@ -136,7 +136,7 @@ def downloadInputs(identifier):
 
 def allmapsTransform():
     
-    # define path variables
+    # define path variables and lists for error handling
 
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
@@ -155,12 +155,11 @@ def allmapsTransform():
                 reader = csv.reader(file)
                 next(reader)
                 for r in reader:
-                    allmapsMapID = r[1]
-                    mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
+                    mapURL = f'https://annotations.allmaps.org/maps/{r[1]}'
                     print(f'⤵️ Re-downloading annotation {mapURL}')
                     annoRequest = requests.get(mapURL, stream=True)
                     allmapsAnnotation = annoRequest.json()               
-                    with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
+                    with open(f'./tmp/annotations/{r[1]}.json', 'w') as f:
                         json.dump(allmapsAnnotation, f)
 
 
@@ -464,44 +463,47 @@ def warpPlates():
 
 def mosaicPlates():
 
-    # define empty dict/list for holding warped plates
-    # and set path
-
-    warpedPlates = {}
-    platesForMosaic = []
-    path = "tmp/warped/"
-
-    # create dict of k/v pairs with filepath: size
-
-    for f in os.listdir(path):
-        isFile = os.path.isfile(path+f)
-        if not f.startswith('.') and isFile == True and f.endswith('.tif'):
-            plate = path+f
-            size = os.path.getsize(plate)
-            warpedPlates[plate] = size
-    
-    # sort the dict from small to large size
-
-    sortedPlates = sorted(warpedPlates.items(), key=lambda x:x[1], reverse=True)
-
-    # append files to new list to be mosaiqued
-    # from largest to smallest
-
-    for f in sortedPlates:
-        platesForMosaic.append(f[0])
-
-    print('➡️  Beginning to create VRT')
-
+    # define vrt options and orderFile exist variable
     vrtOptions = gdal.BuildVRTOptions(
         resolution = 'highest',
         outputSRS = 'EPSG:3857',
         separate = False,
         srcNodata = 0
         )
+    orderFile = os.path.exists("tmp/sort-order.txt")
 
-    gdal.BuildVRT('tmp/mosaic.vrt', platesForMosaic, options=vrtOptions)
+    if orderFile == True:
+        platesForMosaic = open("tmp/sort-order.txt", "r")
+        path = "tmp/warped/"
+        print('➡️  Beginning to create VRT')
+        gdal.BuildVRT('tmp/mosaic.vrt', platesForMosaic, options=vrtOptions)
+        print('🎉 Created the VRT. You can now run the final command, `create-xyz`!')
 
-    print('🎉 Completed creating the VRT. You can now run the final command, `create-xyz`!')
+    else:
+        platesForMosaic = []
+        warpedPlates = {}
+        path = "tmp/warped/"
+
+        # sort plates from small to large
+
+        for f in os.listdir(path):
+            isFile = os.path.isfile(path+f)
+            if not f.startswith('.') and isFile == True and f.endswith('.tif'):
+                plate = path+f
+                size = os.path.getsize(plate)
+                warpedPlates[plate] = size
+        sortedPlates = sorted(warpedPlates.items(), key=lambda x:x[1], reverse=True)
+
+        # append sorted files to new list to be mosaiqued
+
+        for f in sortedPlates:
+            platesForMosaic.append(f[0])
+
+        print('➡️  Beginning to create VRT')
+
+        gdal.BuildVRT('tmp/mosaic.vrt', platesForMosaic, options=vrtOptions)
+
+        print('🎉 Completed creating the VRT. You can now run the final command, `create-xyz`!')
 
     return
 
@@ -563,7 +565,7 @@ def createDirectoryStructure():
 if __name__ == "__main__":
 
     if args.step == '':
-        print("😩 You didn't pass any function to the --step flag, ya ninny! Try:")
+        print("😩 You didn't pass anything to the --step flag, ya ninny! Try:")
         print("\tatlascopify.py --step download-inputs")
         print("\tatlascopify.py --step allmaps-transform")
         print("\tatlascopify.py --step warp-plates")
@@ -583,11 +585,8 @@ if __name__ == "__main__":
             try:
                 downloadInputs(args.identifier)
             except KeyError:
-                print("🚩 This collection of the manifest you entered contains no georeference annotations.")
+                print("🚩 The manifest you entered contains no georeference annotations.")
                 print(f"Begin georeferencing it at: https://editor.allmaps.org/#/collection?url=https://www.digitalcommonwealth.org/search/{args.identifier}/manifest")
-                print("Read the full error below:")
-                print(" ")
-                print(traceback.format_exc())
 
         elif args.step == 'allmaps-transform':
             allmapsTransform()

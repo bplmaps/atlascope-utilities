@@ -1,0 +1,17 @@
+{
+    "tilejson": "2.2.0",
+    "name": "place year",
+    "description": "Title (Author, Year)",
+    "version": "1.0.0",
+    "attribution": "<a href=\"https://leventhalmap.org\">Leventhal Map & Education Center</a> at the <a href=\"https://bpl.org\">Boston Public Library</a>",
+    "scheme": "xyz",
+    "tiles": [
+        "https://s3.us-east-2.wasabisys.com/urbanatlases/ARK_ID/tiles/{z}/{x}/{y}.png"
+    ],
+    "data": [
+        "https://s3.us-east-2.wasabisys.com/urbanatlases/ARK_ID/plates.geojson"
+    ],
+    "minzoom": "13",
+    "maxzoom": "20",
+    "bounds": []
+}

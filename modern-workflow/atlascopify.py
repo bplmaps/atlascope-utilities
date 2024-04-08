@@ -5,8 +5,7 @@ import requests
 import os
 import json
 import subprocess
-from osgeo import gdal, ogr
-from shapely import wkt
+from osgeo import gdal
 import shapely as geom
 import pandas as pd
 import numpy as np
@@ -30,8 +29,6 @@ parser.add_argument('--step', metavar='{download-inputs, allmaps-transform, warp
                     help='steps to execute (default: download-inputs)', default='download-inputs', dest='step')
 parser.add_argument('--identifier', type=str, 
                     help='commonwealth id', dest='identifier')
-parser.add_argument('--sort-order', type=str,
-                    help='add txt file for plates sort order', dest='sort')
 
 args = parser.parse_args()
 
@@ -49,47 +46,34 @@ def downloadInputs(identifier):
     # create empty list to hold image filenames
 
     allmapsManifest = requests.get(f'https://annotations.allmaps.org/?url=https://www.digitalcommonwealth.org/search/{identifier}/manifest.json').json()
-    imagesList = []
 
     # download each map in the manifest
+    # and save as .json file
 
-    num = len((allmapsManifest)['items'])
     print(" ")
-    print(f"Beginning to download {num} annotations...")
+    print(f"Beginning to download {len((allmapsManifest)['items'])} annotations...")
     print(" ")
     for item in allmapsManifest['items']:
-        allmapsMapID = item['id']
-        mapURL = f'https://annotations.allmaps.org/maps/{allmapsMapID}'
-        print(f'⤵️ Downloading annotation {mapURL}')
-        allmapsAnnotation = requests.get(mapURL, stream=True).json()
-
-        # add Allmaps map ID, suffixed with .tif, to image filename list
-
-        for item in allmapsAnnotation["items"]:
-            if item["target"]["source"].replace(".jpg", ".tif") not in imagesList:
-                imagesList.append( item["target"]["source"].replace(".jpg", ".tif") )
-        
-        # save each map's georef annotation as JSON file
-
-        with open(f'./tmp/annotations/{allmapsMapID}.json', 'w') as f:
+        allmapsMapURL = item['id']
+        print(f'⤵️ Downloading annotation {allmapsMapURL}')
+        allmapsAnnotation = requests.get(allmapsMapURL, stream=True).json()
+        with open(f'./tmp/annotations/{allmapsMapURL[-16:]}.json', 'w') as f:
             json.dump(allmapsAnnotation, f)
     
     print("✅   All annotations downloaded!")
 
-    # loop through image filename list
+    # download any images not present in directory
 
-    for image in imagesList:
-
-        imgFile = f'./tmp/img/{image.split("commonwealth:")[1][0:9] }.tif'
-        isFile = os.path.isfile(imgFile)
-        
-        # download any images not present in directory
-
-        if isFile == True:
+    for item in allmapsManifest["items"]:
+        imgManifest = item["target"]["source"]["id"]
+        imgID = imgManifest.split("commonwealth:")[1][0:9]
+        imgURL = f"https://iiif.digitalcommonwealth.org/iiif/2/commonwealth:{imgID}/full/full/0/default.tif"
+        imgFile = f'./tmp/img/{imgID}.tif'
+        if os.path.isfile(imgFile) == True:
             print(f'⏭️ Skipping {imgFile}, already exists...')
         else:
-            print(f'⤵️ Downloading image {image}')
-            imageRequest = requests.get(image, stream=True)
+            print(f'⤵️ Downloading image {imgManifest}')
+            imageRequest = requests.get(imgURL, stream=True)
             with open(imgFile, 'wb') as fd:
                 for chunk in imageRequest.iter_content(chunk_size=128):
                     fd.write(chunk)
@@ -100,23 +84,9 @@ def downloadInputs(identifier):
 
     print("Creating template `tileset.json` file...")
 
-    template = {
-        "tilejson": "2.2.0",
-        "name": "place year",
-        "description": "Title (Author, Year)",
-        "version": "1.0.0",
-        "attribution": "<a href=\"https://leventhalmap.org\">Leventhal Map & Education Center</a> at the <a href=\"https://bpl.org\">Boston Public Library</a>",
-        "scheme": "xyz",
-        "tiles": [
-            "https://s3.us-east-2.wasabisys.com/urbanatlases/ARK_ID/tiles/{z}/{x}/{y}.png"
-        ],
-        "data": [
-            "https://s3.us-east-2.wasabisys.com/urbanatlases/ARK_ID/plates.geojson"
-        ],
-        "minzoom": "13",
-        "maxzoom": "20",
-        "bounds": []
-    }
+    with open("template.json") as f:
+        template = json.load(f)
+    print(template)    
     
     tileset = open('output/tileset.json', 'w+')
     tileset.write(json.dumps(template, indent=2))
@@ -140,10 +110,10 @@ def allmapsTransform():
 
     path = "./tmp/annotations/"
     outPath = path+"transformed/"
-    invalidMasks = []
+    invalid = []
     invalidIDs = []
-    lessThanThreePoints = []
-    lessThanThreeIDs = []
+    # lessThanThreePoints = []
+    # lessThanThreeIDs = []
 
     # re-download annotations if error files exist
 
@@ -170,39 +140,33 @@ def allmapsTransform():
     for f in os.listdir(path):
         mapId = os.path.splitext(f)[0]
         isFile = os.path.isfile(path+f)
+        
         if not f.startswith('.') and isFile == True:
-            print(f'⤵️ Transforming {f} into a geojson...')
-            name = os.path.splitext(f)[0]+'-transformed.geojson'
-            footprint = open(outPath+name, "w")
-            cmd = ["allmaps", "transform", "pixel-mask", f]
-            subprocess.run(cmd, cwd=path, stdout=footprint)
-            plateSchema = {"geometry": "Polygon", "properties": {"imageUri": "str"}}
-            gdf = gpd.read_file(outPath+name)
-
-            # check topology of geojson
-
-            valid = gdf.is_valid
-            request = requests.get(f'https://api.allmaps.org/maps/{mapId}')
-            response = request.json()
-            uri = response['image']['uri']
-            try:
-                if valid[0] == True:
-                    pass
-                else:
-                    invalidMasks.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
+            
+            d=json.load(open(path+f))
+            if ((d['body']['features'])):
+                
+                print(f'⤵️ Transforming {f} into a geojson...')
+                name = os.path.splitext(f)[0]+'-transformed.geojson'
+                footprint = open(outPath+name, "w")
+                cmd = ["allmaps", "transform", "resource-mask", f]
+                subprocess.run(cmd, cwd=path, stdout=footprint)
+                plateSchema = {"geometry": "Polygon", "properties": {"imageId": "str"}}
+                
+                try:
+                    gdf = gpd.read_file(outPath+name)
+                    request = requests.get(f'https://api.allmaps.org/maps/{mapId}')
+                    response = request.json()
+                    uri = response['_allmaps']['id'][-16:]
+                    print(uri)
+                    gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
+                except:
+                    invalid.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
                     invalidIDs.append(mapId)
-            except IndexError as e:
-                error = str(e)
-                lessThanThreePoints.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
-                lessThanThreeIDs.append(mapId)
 
             # save geojson to file
 
-            gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
-    
-    # 
-
-    if (invalidMasks or lessThanThreePoints):
+    if (invalid):
         print(" ")
         print("‼️   Errors were encountered. Fix the following.")
         print("‼️   Hold down `command` and double-click the links to open them in your browser.")
@@ -212,26 +176,16 @@ def allmapsTransform():
             os.mkdir("tmp/errors")
         pd.set_option('display.max_colwidth', None)
         
-        if not invalidMasks:
+        if not invalid:
             pass
         else:
-            maskData = {'Allmaps Map ID': invalidIDs, 'Fix Bad Masks': invalidMasks}
+            maskData = {'Allmaps Map ID': invalidIDs, 'Fix Bad Masks': invalid}
             maskDf = pd.DataFrame(data=maskData)
             print("Fix Bad Masks")
             print(" ")
             print(maskDf)
             print(" ")
             maskDf.to_csv("tmp/errors/invalidMasks.csv")
-        if not lessThanThreePoints:
-            pass
-        else:
-            ltpointsData = {'Allmaps Map ID': lessThanThreeIDs, 'Fix Maps With < 3 Points ': lessThanThreePoints}
-            ltpointsDf = pd.DataFrame(data=ltpointsData)
-            print("Fix Maps With < 3 Points:")
-            print(" ")
-            print(ltpointsDf)
-            print(" ")
-            ltpointsDf.to_csv("tmp/errors/invalidPoints.csv")
         
     # merge, dissolve
 
@@ -248,8 +202,8 @@ def allmapsTransform():
         plates = gpd.pd.concat([gpd.read_file(mask) for mask in masks])
         fields = ['identifier', 'name', 'allmapsMapID', 'digitalCollectionsPermalinkPlate']
         plates[fields] = ''
-        polySchema = {"geometry": "Polygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
-        multipolySchema = {"geometry": "MultiPolygon", "properties": {"imageUri": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
+        polySchema = {"geometry": "Polygon", "properties": {"imageId": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
+        multipolySchema = {"geometry": "MultiPolygon", "properties": {"imageId": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
         plates.to_file("output/plates.geojson", driver="GeoJSON", schema=polySchema)
         print("✅   `plates.geojson` file saved to `output` directory")
 
@@ -267,17 +221,13 @@ def allmapsTransform():
                 diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=multipolySchema)
             else:
                 diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
+            if os.path.exists("tmp/errors") == True:
+                print("You can delete the `tmp/errors` directory.")
             print("✅   `plates-dissolved.geojson` file saved to `tmp` directory")
             print(" ")
-            print("✅   All masks have been transformed and all `plates` files have been created!")
+            print("✅   All `plates` files have been created!")
             print(" ")
             print("You can now proceed to the `warp-plates` step.")
-            print(" ")
-            print("‼️‼️   Before proceeding to the `warp-plates` step, check the `plates-dissolved.geojson` file for small holes.")
-            print("‼️‼️   If you find any, edit the masks in Allmaps to remove them. Then, re-run steps 1-2.")
-            print(" ")
-            if os.path.exists("tmp/errors") == True:
-                os.rmdir("tmp/errors")
         except RuntimeError as e:
             print(e)
 
@@ -312,19 +262,20 @@ def warpPlates():
         if not file.startswith('.') and isFile == True:
 
             print(f'🏔   Registering GCPs from annotation...')
-            anno = open(path+file)
-            annoJson = json.load(anno)
-            commonwealthUrl = annoJson['items'][0]['target']['source']
-            commId = (commonwealthUrl[57:-24])
+            annotation = json.load(open(path+file))
+            # print(annotation)
+            commonwealthUrl = annotation['target']['source']['partOf'][0]['id']
+            commId = (commonwealthUrl[-9:])
             
             # correlate pixel and spatial coordinates
             
             gcps = []
-            for gcp in annoJson['items'][0]['body']['features']:
+            for gcp in annotation['body']['features']:
+                    # print(gcp['properties']['resourceCoords'])
                     xt, yt = transformer.transform(
                         gcp['geometry']['coordinates'][0], gcp['geometry']['coordinates'][1])
-                    line = float(gcp['properties']['pixelCoords'][1])
-                    pixel = float(gcp['properties']['pixelCoords'][0])
+                    line = float(gcp['properties']['resourceCoords'][1])
+                    pixel = float(gcp['properties']['resourceCoords'][0])
                     g = gdal.GCP(xt, yt, 0, pixel, line)
                     gcps.append(g)
             sourceImg = gdal.Open(f'./tmp/img/{commId}.tif')
@@ -464,6 +415,7 @@ def warpPlates():
 def mosaicPlates():
 
     # define vrt options and orderFile exist variable
+
     vrtOptions = gdal.BuildVRTOptions(
         resolution = 'highest',
         outputSRS = 'EPSG:3857',
@@ -521,6 +473,7 @@ def createXYZ():
     cmd = [
         "gdal2tiles.py", "--xyz", "-z", "13-20", "--exclude", "--processes", "4", "tmp/mosaic.vrt", "output/tiles"
     ]
+
     print("Beginning to generate XYZ tiles...")
     subprocess.run(
         cmd,
@@ -563,42 +516,22 @@ def createDirectoryStructure():
 #########################################
 
 if __name__ == "__main__":
+        
+    # no matter what step we're running
+    # first run the directory structure function
+    # to ensure that the right subdirectories exist
 
-    if args.step == '':
-        print("😩 You didn't pass anything to the --step flag, ya ninny! Try:")
-        print("\tatlascopify.py --step download-inputs")
-        print("\tatlascopify.py --step allmaps-transform")
-        print("\tatlascopify.py --step warp-plates")
-        print("\tatlascopify.py --step mosaic-plates")
-        print("\tatlascopify.py --step createXYZ")
-        exit()
+    createDirectoryStructure()
 
+    if args.step == 'download-inputs':
+        downloadInputs(args.identifier)
+    elif args.step == 'allmaps-transform':
+        allmapsTransform()
+    elif args.step == 'warp-plates':
+        warpPlates()
+    elif args.step == 'mosaic-plates':
+        mosaicPlates()
+    elif args.step =='create-xyz':
+        createXYZ()
     else:
-        
-        # no matter what step we're running
-        # first run the directory structure function
-        # to ensure that the right subdirectories exist
-
-        createDirectoryStructure()
-    
-        if args.step == 'download-inputs':
-            try:
-                downloadInputs(args.identifier)
-            except KeyError:
-                print("🚩 The manifest you entered contains no georeference annotations.")
-                print(f"Begin georeferencing it at: https://editor.allmaps.org/#/collection?url=https://www.digitalcommonwealth.org/search/{args.identifier}/manifest")
-
-        elif args.step == 'allmaps-transform':
-            allmapsTransform()
-        
-        elif args.step == 'warp-plates':
-            warpPlates()
-        
-        elif args.step == 'mosaic-plates':
-            mosaicPlates()
-
-        elif args.step =='create-xyz':
-            createXYZ()
-
-        else:
-            print("We haven't made this step do anything yet")
+        print("ERROR: Step not recognized")

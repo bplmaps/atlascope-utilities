@@ -84,10 +84,7 @@ def downloadInputs(identifier):
 
     print("Creating template `tileset.json` file...")
 
-    with open("template.json") as f:
-        template = json.load(f)
-    print(template)    
-    
+    template = requests.get("https://raw.githubusercontent.com/bplmaps/atlascope-utilities/master/modern-workflow/template.json").json()
     tileset = open('output/tileset.json', 'w+')
     tileset.write(json.dumps(template, indent=2))
     tileset.close()
@@ -112,8 +109,6 @@ def allmapsTransform():
     outPath = path+"transformed/"
     invalid = []
     invalidIDs = []
-    # lessThanThreePoints = []
-    # lessThanThreeIDs = []
 
     # re-download annotations if error files exist
 
@@ -190,11 +185,9 @@ def allmapsTransform():
     # merge, dissolve
 
     else:
-        print(" ")
-        print("✅   All pixel masks transformed!")
-        print(" ")
-        print("Generating `plates.geojson` file...")
-        print(" ")
+        print("✅   All pixel masks transformed!\n")
+        print("Generating `plates.geojson` file...\n")
+
 
         # merge masks using geopandas
 
@@ -205,14 +198,12 @@ def allmapsTransform():
         polySchema = {"geometry": "Polygon", "properties": {"imageId": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
         multipolySchema = {"geometry": "MultiPolygon", "properties": {"imageId": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
         plates.to_file("output/plates.geojson", driver="GeoJSON", schema=polySchema)
-        print("✅   `plates.geojson` file saved to `output` directory")
+        print("✅   `plates.geojson` file saved to `output` directory\n")
 
         # dissolve plates file and
         # save according to geometry type
 
-        print(" ")
-        print("Dissolving `plates.geojson` file...")
-        print(" ")
+        print("Dissolving `plates.geojson` file...\n")
         
         try:
             diss = plates.dissolve()
@@ -247,10 +238,6 @@ def warpPlates():
     # set transformation and path variables
 
     gdal.UseExceptions()
-    badMaskIDs = []
-    badMasks = []
-    noCutlineIDs = []
-    noCutlines = []
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
     path="./tmp/annotations/"
 
@@ -331,78 +318,12 @@ def warpPlates():
                 print(f'⏭️   Skipping {warpedPlate}, already exists...')
                 os.remove(f'./tmp/img/{mapId}-translated.tif')
             else:
-                try:
-                    print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')
-                    gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
-                                f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
+                print(f'💫 Creating warped TIFF in EPSG:3857 for {mapId}.json')
+                gdal.Warp(f'./tmp/warped/{mapId}-warped.tif',
+                            f'./tmp/img/{mapId}-translated.tif', options=warpOptions)
 
-                    print(f'🚮   Deleting temporary translate file for {mapId}.json')
-                    os.remove(f'./tmp/img/{mapId}-translated.tif')
-
-                # if warp fails, detect why
-
-                except RuntimeError as e:
-                    error = str(e)
-                    cutlineMissing = "cutline features"
-                    
-                    # get LMEC URI of this image using Allmaps API
-                    # to be printed at the end of runtime
-                    
-                    request = requests.get(f'https://api.allmaps.org/maps/{mapId}')
-                    response = request.json()
-                    uri = response['image']['uri']
-
-                    # detect `no cutline` errors
-                    # this sucks though. fix later
-
-                    if cutlineMissing in error:
-                        print("⁉️   Did not get any cutline features.")
-                        noCutlines.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
-                        noCutlineIDs.append(mapId)
-                        os.remove(f'./tmp/img/{mapId}-translated.tif')
-
-                    # otherwise, detect bad masks
-
-                    else:
-                        print("❌   Warp failed due to bad mask.")
-
-                        badMasks.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
-                        badMaskIDs.append(mapId)
-                        os.remove(f'./tmp/img/{mapId}-translated.tif')
-
-    # print any plates that need fixing
-    # as pandas dataframe
-
-    if not (badMasks or noCutlines):
-        print(" ")
-        print("✅   All maps have been warped!")
-        print(" ")
-        print("You can now proceed to the `mosaic-plates` step.")
-        print(" ")
-    else:
-        print(" ")
-        print(f"‼️   Errors were encountered. Fix the following and then re-run steps 1-3 for this atlas.")
-        print(" ")
-        pd.set_option('display.max_colwidth', None)
-
-        if not badMasks:
-            pass
-        else:
-            maskdata = {'Allmaps Map ID': badMaskIDs, 'Fix Bad Masks': badMasks}
-            maskdf = pd.DataFrame(data=maskdata)
-            print("Fix Bad Masks")
-            print(" ")
-            print(maskdf)
-            print(" ")
-        if not noCutlines:
-            pass
-        else:
-            cutlinedata = {'Allmaps Map ID': noCutlineIDs, 'Fix No Cutline': noCutlines}
-            cutlinedf = pd.DataFrame(data=cutlinedata)
-            print("Fix No Cutlines:")
-            print(" ")
-            print(cutlinedf)
-            print(" ")
+                print(f'🚮   Deleting temporary translate file for {mapId}.json')
+                os.remove(f'./tmp/img/{mapId}-translated.tif')
 
 #########################################
 #####                               #####

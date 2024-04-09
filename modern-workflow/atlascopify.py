@@ -153,7 +153,6 @@ def allmapsTransform():
                     request = requests.get(f'https://api.allmaps.org/maps/{mapId}')
                     response = request.json()
                     uri = response['_allmaps']['id'][-16:]
-                    print(uri)
                     gdf.to_file(outPath+name, driver="GeoJSON", schema=plateSchema)
                 except:
                     invalid.append(f'https://editor.allmaps.org/#/mask?url={uri}/info.json')
@@ -182,7 +181,7 @@ def allmapsTransform():
             print(" ")
             maskDf.to_csv("tmp/errors/invalidMasks.csv")
         
-    # merge, dissolve
+    # merge, dissolve, specify precision
 
     else:
         print("✅   All pixel masks transformed!\n")
@@ -198,13 +197,10 @@ def allmapsTransform():
         polySchema = {"geometry": "Polygon", "properties": {"imageId": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
         multipolySchema = {"geometry": "MultiPolygon", "properties": {"imageId": "str", "identifier": "str", "name": "str", "allmapsMapID": "str", "digitalCollectionsPermalinkPlate": "str"}}
         plates.to_file("output/plates.geojson", driver="GeoJSON", schema=polySchema)
-        print("✅   `plates.geojson` file saved to `output` directory\n")
 
         # dissolve plates file and
         # save according to geometry type
-
-        print("Dissolving `plates.geojson` file...\n")
-        
+       
         try:
             diss = plates.dissolve()
             multiPolyCheck = 'MultiPolygon' in diss['geometry'].geom_type.values
@@ -213,15 +209,17 @@ def allmapsTransform():
             else:
                 diss.to_file("tmp/plates-dissolved.geojson", driver="GeoJSON", schema=polySchema)
             if os.path.exists("tmp/errors") == True:
-                print("You can delete the `tmp/errors` directory.")
-            print("✅   `plates-dissolved.geojson` file saved to `tmp` directory")
-            print(" ")
-            print("✅   All `plates` files have been created!")
-            print(" ")
-            print("You can now proceed to the `warp-plates` step.")
+                print("You can delete the `tmp/errors` directory.\n")
+            print("✅   All `plates` files have been created!\n")
+            print("You can now proceed to the `warp-plates` step.\n")
         except RuntimeError as e:
             print(e)
+        
+        # trim to 4 decimal pts
 
+        out=open("plates-precise.geojson", "w")
+        cmd=["mapshaper", "plates-dissolved.geojson", "-o", "precision=0.0001", "plates-precise.geojson"]
+        subprocess.run(cmd, cwd="tmp/", stdout=out)
     return
 
 #########################################

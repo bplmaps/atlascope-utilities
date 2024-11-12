@@ -17,6 +17,7 @@ To run the script, you'll need:
 1. [GDAL](https://gdal.org/download.html) (recommended installation using [Anaconda](https://docs.anaconda.com/free/navigator/))
 2. [Allmaps CLI](https://github.com/allmaps/allmaps/tree/main/apps/cli)
 3. [GeoPandas](https://geopandas.org/en/stable/getting_started/install.html)
+4. [MapShaper](https://www.npmjs.com/package/mapshaper#installation)
 
 ## Usage
 
@@ -24,21 +25,45 @@ To run the script, you'll need:
 
 Clone this repository and `cd` into it.
 
-### Create symbolic link to `atlascopify.py`
+### Update path so that you can run the script globally
 
-From inside the repo:
+Open a terminal window at the `modern-workflow` folder in this repository and:
 
 ```sh
-sudo ln -s pwd usr/local/bin
+pwd
 ```
 
-### Update dependencies
+The terminal will print your present working directory, which should end in `modern-workflow`. Copy the output and then:
+
+```sh
+sudo nano /etc/paths
+```
+
+Finally, follow these instructions, which are [old](https://www.architectryan.com/2012/10/02/add-to-the-path-on-mac-os-x-mountain-lion/) but work for me on Sonoma 14.7.1:
+
+1. Enter your password, if prompted
+2. Use the arrow key to navigate to the bottom of the file
+3. Paste using `command+v` the path ending in `modern-workflow`
+4. Hit `ctrl+X` to quit
+5. Enter `Y` to save
+6. Restart your terminal session for the new path to take effect
+7. Test your new path with `echo $PATH`
+
+You should see something like this:
+
+```sh
+/opt/anaconda3/bin:/opt/anaconda3/condabin:/usr/local/bin:/usr/local/sbin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/geoprocessing/Documents/GitHub/atlascope-utilities/modern-workflow:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin
+```
+
+Basically, a big jumble of paths, which include the `modern-workflow` repository.
+
+<!-- ### Update dependencies
 
 From inside the repo:
 
 ```sh
 yarn install
-```
+``` -->
 
 ### Commands
 

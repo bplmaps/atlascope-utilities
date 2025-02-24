@@ -67,15 +67,17 @@ def downloadInputs(identifier):
     for item in allmapsManifest["items"]:
         imgManifest = item["target"]["source"]["id"]
         imgID = imgManifest.split("commonwealth:")[1][0:9]
-        imgURL = f"https://iiif.digitalcommonwealth.org/iiif/2/commonwealth:{imgID}/full/full/0/default.tif"
+        imgURL=f"https://curator.digitalcommonwealth.org/api/filestreams/image/commonwealth:{imgID}?show_primary_url=true"      
         imgFile = f'./tmp/img/{imgID}.tif'
         if os.path.isfile(imgFile) == True:
             print(f'⏭️ Skipping {imgFile}, already exists...')
         else:
             print(f'⤵️ Downloading image {imgManifest}')
             imageRequest = requests.get(imgURL, stream=True)
+            response = imageRequest.json()
+            img = requests.get(response['file_set']['image_primary_url'])
             with open(imgFile, 'wb') as fd:
-                for chunk in imageRequest.iter_content(chunk_size=128):
+                for chunk in img.iter_content(chunk_size=128):
                     fd.write(chunk)
 
     print("✅   All images downloaded!")
@@ -144,7 +146,8 @@ def allmapsTransform():
                 print(f'⤵️ Transforming {f} into a geojson...')
                 name = os.path.splitext(f)[0]+'-transformed.geojson'
                 footprint = open(outPath+name, "w")
-                cmd = ["allmaps", "transform", "resource-mask", f]
+                cmd = ["allmaps", "transform", "resource-mask", f]  # use this to transform strictly from annotation
+                # cmd = ["allmaps", "transform", "--transformation-type", "thinPlateSpline", "resource-mask", f]  # use this for TPS
                 subprocess.run(cmd, cwd=path, stdout=footprint)
                 plateSchema = {"geometry": "Polygon", "properties": {"imageId": "str"}}
                 
@@ -299,7 +302,7 @@ def warpPlates():
                                     multithread=True,
                                     dstSRS="EPSG:3857",
                                     creationOptions=['COMPRESS=LZW', 'BIGTIFF=YES'],
-                                    polynomialOrder=1,
+                                    polynomialOrder=1,  # comment this out for TPS
                                     resampleAlg='cubic',
                                     dstAlpha=True,
                                     dstNodata=0,
@@ -307,7 +310,8 @@ def warpPlates():
                                     yRes=0.1,
                                     targetAlignedPixels=True,
                                     cutlineDSName=cutline,
-                                    cropToCutline=True
+                                    cropToCutline=True,
+                                    # tps=True    # comment this out for polynomial
                                     )
             warpedPlate = f'./tmp/warped/{mapId}-warped.tif'
             isFile = os.path.isfile(warpedPlate)
